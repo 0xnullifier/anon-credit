@@ -134,6 +134,16 @@ GATEWAY_VERIFIER_URL=http://127.0.0.1:$(free_port)
 ENV
   RUN_DIR="$work/run" SERVICES_PROFILE="${SERVICES_PROFILE:-debug}" \
     "$repo/tooling/dev/run-services.sh" "$env_file" || fail "run-services.sh failed; see $work/run"
+  # The admin snapshot has the deployment values of phase 6.
+  admin_bind="$(sed -n 's/^GATEWAY_ADMIN_BIND=//p' "$env_file")"
+  token="$(sed -n 's/^GATEWAY_ADMIN_TOKEN=//p' "$env_file")"
+  printf 'Authorization: Bearer %s\n' "$token" >"$work/auth-header"
+  curl -fsS -H "@$work/auth-header" "http://$admin_bind/admin/v1/snapshot" >"$work/snapshot.json" || fail "admin snapshot"
+  jq -e --arg gid "$gateway_id" --arg vh "$(value verifier_artifact_hash "$config")" '
+    .gateway_id == $gid and .epoch_seconds == 30 and .verifier_artifact_hash == $vh
+    and .demo_ip_logging == true and (.price_table_hash | test("^0x[0-9a-f]{64}$"))
+    and (.price_table.units | has("eth_chainId")) and (.accepted_roots | type == "array")
+    and .root_window_epochs == 96' "$work/snapshot.json" >/dev/null || fail "admin snapshot fields; see $work/snapshot.json"
   "$repo/tooling/dev/stop-services.sh" "$work/run" || fail "stop-services.sh failed"
   while read -r line; do
     pid="${line#*=}"
