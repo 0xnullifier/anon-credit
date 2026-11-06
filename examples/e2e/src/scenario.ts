@@ -77,12 +77,12 @@ const STEP_NAMES: Readonly<Record<number, string>> = {
   5: "wait for an eligible root and the first-use delay",
   6: "fetch the membership path over the registry isolation key and check it locally",
   7: "generate the batch-open proof in the browser",
-  8: "open the first batch: remaining 100, next_seq 0",
+  8: "open the first batch with a chunked proof upload: remaining 100, next_seq 0",
   9: "eth_chainId, eth_blockNumber, eth_getBalance: remaining 99, 98, 96; next_seq 1, 2, 3",
   10: "replay the first request (same response, no debit); same seq with another body is rejected",
   11: "invalid signature and sequence gap are rejected without a balance change",
   12: "spend the rest with one-unit reads; a further spend fails without a sequence change",
-  13: "open the second batch on a new isolation key and make a read",
+  13: "open the second batch on a new isolation key (inline proof on the direct transport) and make a read",
   14: "third batch: a modified proof is rejected with no session row; then the valid open succeeds",
   15: "gateway admin view matches the committed balances",
 };
@@ -194,11 +194,28 @@ export async function runScenario(options: ScenarioOptions): Promise<ScenarioOut
   });
 
   await step(8, async () => {
-    const opened = await call({ op: "submitOpen", batchId: id(0), tamper: false }, openValueSchema);
+    // Batch 1 always uses the chunked upload, also on the direct transport, so that the local
+    // harness tests the same path as the Nox run.
+    const opened = await call({ op: "submitOpen", batchId: id(0), tamper: false, upload: "chunked" }, openValueSchema);
     equal(opened.existing, false, "existing");
     equal(opened.remaining, 100, "remaining after open");
     equal(opened.nextSeq, "0", "next_seq after open");
-    return { openMs: Math.round(opened.openMs), reprepared: opened.reprepared };
+    const upload = opened.upload;
+    if (upload === null) throw new AssertionFailure("the first open did not use the chunked upload");
+    check(upload.chunks > 1, "the proof upload has only one chunk");
+    return {
+      openMs: Math.round(opened.openMs),
+      reprepared: opened.reprepared,
+      uploadEncoding: upload.encoding,
+      proofBytes: upload.proofBytes,
+      uploadBytes: upload.uploadBytes,
+      chunks: upload.chunks,
+      parallel: upload.parallel,
+      fellBack: upload.fellBack,
+      sends: upload.sends,
+      uploadMs: Math.round(upload.totalMs),
+      chunkMsMax: Math.round(Math.max(...upload.chunkMs)),
+    };
   });
 
   await step(9, async () => {
@@ -254,24 +271,32 @@ export async function runScenario(options: ScenarioOptions): Promise<ScenarioOut
   await step(13, async () => {
     await call({ op: "waitEligible", batchId: id(1) }, eligibleValueSchema);
     await call({ op: "prepareOpen", batchId: id(1) }, prepareValueSchema);
-    const opened = await call({ op: "submitOpen", batchId: id(1), tamper: false }, openValueSchema);
+    // "auto": inline on the direct transport, chunks through Nox.
+    const opened = await call({ op: "submitOpen", batchId: id(1), tamper: false, upload: "auto" }, openValueSchema);
     equal(opened.remaining, 100, "remaining after the second open");
+    equal(opened.upload === null, options.setup.transport === "direct", "inline proof on the direct transport");
     const read = await call({ op: "rpc", batchId: id(1), method: "eth_blockNumber", params: [] }, rpcValueSchema);
     equal([read.remaining, read.nextSeq], [99, "1"], "second batch read");
     const info = await call({ op: "transportInfo" }, transportInfoValueSchema);
     check(info.isolationKeys.includes(id(0)) && info.isolationKeys.includes(id(1)), "batch isolation keys are missing");
     check(id(0) !== id(1), "the two batches have the same isolation key");
-    return { isolationKeys: info.isolationKeys.length, distinctFromFirst: true, remaining: read.remaining };
+    return {
+      isolationKeys: info.isolationKeys.length,
+      distinctFromFirst: true,
+      remaining: read.remaining,
+      openMode: opened.upload === null ? "inline" : "chunked",
+      openMs: Math.round(opened.openMs),
+    };
   });
 
   await step(14, async () => {
     await call({ op: "waitEligible", batchId: id(2) }, eligibleValueSchema);
     await call({ op: "prepareOpen", batchId: id(2) }, prepareValueSchema);
-    const tampered = await expectPageError(call, { op: "submitOpen", batchId: id(2), tamper: true }, openValueSchema);
+    const tampered = await expectPageError(call, { op: "submitOpen", batchId: id(2), tamper: true, upload: "auto" }, openValueSchema);
     equal(tampered, "proof_invalid", "modified proof");
     const row = await expectPageError(call, { op: "status", batchId: id(2) }, statusValueSchema);
     equal(row, "not_found", "session row after the modified proof");
-    const opened = await call({ op: "submitOpen", batchId: id(2), tamper: false }, openValueSchema);
+    const opened = await call({ op: "submitOpen", batchId: id(2), tamper: false, upload: "auto" }, openValueSchema);
     equal([opened.existing, opened.remaining, opened.nextSeq], [false, 100, "0"], "valid open of the third batch");
     return { tampered, sessionRow: row, reprepared: opened.reprepared };
   });
