@@ -751,10 +751,10 @@ version = "0.1.0"
 dependencies = [
  "anon-credit-crypto",
  "anon-credit-protocol",
+ "hex",
  "proptest",
  "serde",
  "serde_json",
- "sha3 0.12.0",
  "thiserror",
 ]
 

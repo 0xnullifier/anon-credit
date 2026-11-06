@@ -11,11 +11,13 @@ pub mod mmr;
 mod mmr_hash_ext;
 pub mod proof;
 pub mod store;
+pub mod witness;
 
 pub use anon_credit_crypto::constants::MAX_LEAVES;
 pub use mmr::{Mmr, MmrError, Peak};
 pub use proof::{MembershipProof, ProofError, check_proof, verify_proof};
 pub use store::{AppendUpdate, MemoryStore, MmrStore, NodeWrite};
+pub use witness::{BatchOpenWitness, MmrWitnessError, OpenSecrets, WitnessError};
 
 #[cfg(test)]
 mod tests {

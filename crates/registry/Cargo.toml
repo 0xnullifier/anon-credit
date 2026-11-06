@@ -21,4 +21,4 @@ thiserror.workspace = true
 # root manifest does not change in phase 1.
 proptest = "1.12.0"
 serde_json.workspace = true
-sha3.workspace = true
+hex.workspace = true
