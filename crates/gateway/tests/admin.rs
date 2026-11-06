@@ -5,8 +5,8 @@
 mod common;
 
 use anon_credit_protocol::admin::{AdminSnapshot, EventKind, GatewayEvent, SessionDetail};
-use anon_credit_protocol::api::{DemoPeerResponse, IpAttribution};
-use anon_credit_protocol::{ErrorBody, ErrorCode};
+use anon_credit_protocol::api::{DemoPeerResponse, IpAttribution, PricesResponse, RootsResponse};
+use anon_credit_protocol::{ErrorBody, ErrorCode, PriceTable};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use common::*;
@@ -117,6 +117,54 @@ async fn snapshot_and_session_view_reflect_committed_state() {
         .admin_get("/admin/v1/sessions/0xABC", Some(ADMIN_TOKEN))
         .await;
     assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn snapshot_has_the_deployment_prices_and_accepted_roots() {
+    let h = Harness::new().await;
+    let snapshot: AdminSnapshot = h
+        .admin_get("/admin/v1/snapshot", Some(ADMIN_TOKEN))
+        .await
+        .json();
+    let deployment = deployment();
+    assert_eq!(snapshot.epoch_seconds, EPOCH_SECONDS);
+    assert_eq!(snapshot.circuit_id, deployment.circuit_id);
+    assert_eq!(snapshot.verifier_artifact_hash, VERIFIER_HASH);
+    assert_eq!(snapshot.gateway_id, deployment.gateway_id);
+    assert_eq!(snapshot.deployment_id, deployment.deployment_id());
+    assert_eq!(snapshot.root_window_epochs, 96);
+
+    // The price table and the roots are the same values as on the public API.
+    let prices: PricesResponse = h.get("/v1/prices").await.json();
+    assert_eq!(snapshot.price_table, prices.price_table);
+    assert_eq!(snapshot.price_table_hash, prices.price_table_hash);
+    assert_eq!(snapshot.price_table, PriceTable::initial());
+    assert_eq!(snapshot.price_table_hash, PriceTable::initial().hash());
+    let roots: RootsResponse = h.get("/v1/roots").await.json();
+    assert_eq!(snapshot.accepted_roots, roots.roots);
+    assert_eq!(snapshot.accepted_roots.len(), 1);
+    assert_eq!(snapshot.accepted_roots[0].root, root());
+    assert_eq!(snapshot.accepted_roots[0].leaf_count, LEAF_COUNT);
+    assert_eq!(
+        Some(snapshot.accepted_roots[0].source_epoch),
+        snapshot.roots.latest_source_epoch
+    );
+}
+
+#[tokio::test]
+async fn session_view_lists_more_than_fifty_receipts() {
+    let h = Harness::new().await;
+    let client = Client::new(1);
+    h.open_ok(&client).await;
+    for seq in 0..60 {
+        spend_once(&h, &client, seq, seq + 1).await;
+    }
+    let path = format!("/admin/v1/sessions/{}", client.batch_id.to_hex());
+    let detail: SessionDetail = h.admin_get(&path, Some(ADMIN_TOKEN)).await.json();
+    assert_eq!(detail.receipts.len(), 60);
+    assert_eq!(detail.receipts[0].receipt.seq.0, 59);
+    assert_eq!(detail.receipts[59].receipt.seq.0, 0);
+    assert_eq!(detail.summary.session.remaining, 40);
 }
 
 /// Read Server-Sent Events from a stream until `count` events arrive.

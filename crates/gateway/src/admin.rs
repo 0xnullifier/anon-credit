@@ -7,7 +7,9 @@
 
 use crate::app::SharedGateway;
 use crate::error::ApiError;
+use crate::roots::WINDOW_EPOCHS_U32;
 use crate::store::SessionRow;
+use anon_credit_crypto::constants::CIRCUIT_ID;
 use anon_credit_protocol::admin::{
     AdminReceipt, AdminSnapshot, GatewayEvent, SessionDetail, SessionSummary, SessionTotals,
 };
@@ -25,8 +27,9 @@ use std::convert::Infallible;
 pub const SNAPSHOT_EVENTS: usize = 100;
 /// Number of sessions in a snapshot.
 pub const SNAPSHOT_SESSIONS: u32 = 50;
-/// Number of receipts in a session view.
-pub const SESSION_RECEIPTS: u32 = 50;
+/// Number of receipts in a session view. A batch has at most `batch_size` (100) units and a
+/// spend costs at least one unit, so a session has at most 100 receipts. This value shows all.
+pub const SESSION_RECEIPTS: u32 = 200;
 
 /// Compare two byte strings in time that does not depend on the first different byte.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -84,6 +87,7 @@ pub async fn snapshot(State(gateway): State<SharedGateway>) -> Response {
         _ => return ApiError::storage().into_response(),
     };
     let config = &gateway.config;
+    let deployment = &config.deployment;
     Json(AdminSnapshot {
         status: "ok".to_owned(),
         started_at: DecimalU64(gateway.started_at),
@@ -92,9 +96,21 @@ pub async fn snapshot(State(gateway): State<SharedGateway>) -> Response {
         deployment_id: config.deployment_id,
         gateway_id: config.gateway_id(),
         upstream_chain_id: config.upstream_chain_id,
+        epoch_seconds: deployment.epoch_seconds,
+        circuit_id: Bytes32(CIRCUIT_ID.to_bytes_be()),
+        verifier_artifact_hash: deployment.verifier_artifact_hash,
         demo_ip_logging: gateway.peer.captures(),
         verifier: gateway.verifier_status.clone(),
+        price_table_hash: config.price_table_hash,
+        price_table: config.prices.clone(),
         roots: gateway.roots.status(current),
+        root_window_epochs: WINDOW_EPOCHS_U32,
+        accepted_roots: gateway
+            .roots
+            .accepted(current)
+            .iter()
+            .map(|record| record.to_api())
+            .collect(),
         counters: gateway.events.counters(),
         sessions: SessionTotals {
             active: DecimalU64(counts.active),
