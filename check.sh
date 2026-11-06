@@ -81,4 +81,26 @@ else
   step "nargo not found; skip circuit checks"
 fi
 
+# ProveKit. crates/prover is a separate workspace on the nightly toolchain that ProveKit pins.
+# The sample circuit needs the Noir version that ProveKit links. Both run only if installed
+# (tooling/provekit/install.sh). PROVEKIT_GATE=1 also runs the Chromium browser gate.
+# shellcheck source=tooling/provekit/pins.env
+source tooling/provekit/pins.env
+if rustup toolchain list 2>/dev/null | grep -q "^$PROVEKIT_RUST_TOOLCHAIN"; then
+  step "crates/prover fmt, clippy, test ($PROVEKIT_RUST_TOOLCHAIN)"
+  (cd crates/prover && cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo test)
+else
+  step "$PROVEKIT_RUST_TOOLCHAIN not installed; skip crates/prover"
+fi
+if [ -x "$NARGO" ]; then
+  step "nargo $NOIR_VERSION test (provekit-sample)"
+  (cd circuits/provekit-sample && "$NARGO" test)
+else
+  step "nargo $NOIR_VERSION not found at $NARGO; skip provekit-sample"
+fi
+if [ "${PROVEKIT_GATE:-0}" = "1" ]; then
+  step "ProveKit browser gate (Chromium proves, Rust verifies)"
+  node packages/prover/dev/gate.ts
+fi
+
 printf '\nAll checks passed.\n'
