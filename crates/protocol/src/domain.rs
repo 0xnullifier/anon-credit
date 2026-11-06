@@ -40,13 +40,13 @@ impl DomainTag {
 /// Domain of the deployment configuration digest (`deployment_id`).
 pub const DEPLOYMENT: DomainTag = DomainTag::from_ascii("anon-credit/deployment");
 
-/// Domain of the session-open signature. Phase 3 defines its message layout.
+/// Domain of the session-open signature. See [`crate::open`].
 pub const OPEN: DomainTag = DomainTag::from_ascii("anon-credit/open");
 
 /// Domain of the spend signature.
 pub const SPEND: DomainTag = DomainTag::from_ascii("anon-credit/spend");
 
-/// Domain of the session-status signature. Phase 3 defines its message layout.
+/// Domain of the session-status signature. See [`crate::status`].
 pub const STATUS: DomainTag = DomainTag::from_ascii("anon-credit/status");
 
 #[cfg(test)]
