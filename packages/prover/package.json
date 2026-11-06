@@ -8,8 +8,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "typecheck": "tsc -p tsconfig.json && tsc -p dev/tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "dev": "vite --config dev/vite.config.ts",
+    "gate": "node dev/gate.ts"
   },
   "dependencies": {
     "@anon-credit/protocol": "workspace:*",
