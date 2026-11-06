@@ -11,9 +11,15 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# BN254 scalar field for Poseidon2. These versions are local to this crate so that the
+# root manifest does not change in phase 1. ark-ff 0.5.0 is already in Cargo.lock.
+ark-bn254 = { version = "0.5.0", default-features = false, features = ["scalar_field"] }
+ark-ff = { version = "0.5.0", default-features = false }
 ed25519-dalek.workspace = true
+hex.workspace = true
+serde.workspace = true
 sha3.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-hex.workspace = true
+serde_json.workspace = true
