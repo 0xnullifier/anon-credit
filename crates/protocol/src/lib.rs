@@ -17,6 +17,7 @@ pub mod deployment;
 pub mod domain;
 pub mod error;
 pub mod hex_bytes;
+pub mod issuer_api;
 pub mod open;
 pub mod price;
 pub mod settings;
