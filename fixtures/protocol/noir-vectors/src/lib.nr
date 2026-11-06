@@ -1,8 +1,8 @@
 // Reference vectors for the circuit hash.
 //
-// This package uses `poseidon::poseidon2::Poseidon2::hash` from noir-lang/poseidon v0.2.0.
-// That sponge is the same code as `std::hash::poseidon2::Poseidon2::hash` in the Noir standard
-// library. It does not use the sponge of circuits/batch-open, so the vectors are independent.
+// This package uses `poseidon::poseidon2::Poseidon2::hash` from noir-lang/poseidon v0.4.0.
+// That sponge is the same function as the private standard library sponge (`Poseidon2Hasher`).
+// It does not use the sponge of circuits/batch-open, so the vectors are independent.
 //
 // Each test prints lines of this form:
 //   vector|<kind>|<name>|<inputs>|<output>
