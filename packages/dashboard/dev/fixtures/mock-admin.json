@@ -1,0 +1,655 @@
+{
+  "description": "Replay fixture of the dashboard mock admin server (dev/mock-admin.ts). Events have the GatewayEvent shape of packages/protocol/src/admin-api.ts, with the fields that each gateway code path sets (crates/gateway/src/open.rs and spend.rs). id and at_ms are placeholders; the mock sets them when it replays an event. IP addresses are documentation ranges (RFC 5737). The raw entry is not valid on purpose: the dashboard must discard and count it.",
+  "gateway": {
+    "status": "ok",
+    "current_epoch": "60000001",
+    "deployment_id": "0x278f691440dd3b7c8adf0f7ab8b07346673fe19f9bb0f30d049751f203e34f73",
+    "gateway_id": "0xa61001e231d72fab7720a2aeb8357cbc84078a9087053ff2d550382a72181e7c",
+    "upstream_chain_id": 11155111,
+    "epoch_seconds": 30,
+    "verifier": {
+      "pkv_sha256": "6f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "circuit_id": "0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e",
+      "witness_mode": "zk"
+    },
+    "roots": {
+      "accepted": 3,
+      "latest_source_epoch": "60000000",
+      "latest_age_epochs": "1",
+      "last_refresh_at": "0",
+      "last_error": null
+    }
+  },
+  "sessions": [
+    {
+      "session": {
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "remaining": 100,
+        "units_total": "0",
+        "next_seq": "0",
+        "open_epoch": "60000001",
+        "deadline_epoch": "60035041",
+        "state": "active"
+      },
+      "opened_at": "0",
+      "proof_size": 300000,
+      "verify_ms": 1840
+    },
+    {
+      "session": {
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "session_pub": "0x3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "remaining": 100,
+        "units_total": "0",
+        "next_seq": "0",
+        "open_epoch": "60000001",
+        "deadline_epoch": "60035041",
+        "state": "active"
+      },
+      "opened_at": "0",
+      "proof_size": 299872,
+      "verify_ms": 1712
+    }
+  ],
+  "prices": {
+    "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+    "price_table": {
+      "units": {
+        "eth_blockNumber": 1,
+        "eth_chainId": 1,
+        "eth_getBalance": 2
+      },
+      "version": 1
+    }
+  },
+  "roots": {
+    "current_epoch": "60000001",
+    "root_window_epochs": 96,
+    "roots": [
+      {
+        "source_epoch": "60000000",
+        "root": "0x17bf3aa330d29f8b007a82b686fa180ba8d585a2b5f4cd2cb89e602238c06802",
+        "leaf_count": 3
+      },
+      {
+        "source_epoch": "59999998",
+        "root": "0x0e5c4f1a7b2d9e3c6a8f0b4d2e7c1a9f5b3d8e0c6a2f4b7d9e1c3a5f8b0d2e46",
+        "leaf_count": 2
+      },
+      {
+        "source_epoch": "59999990",
+        "root": "0x21d7a9c3e5f0b8d2a4c6e8f1b3d5a7c9e0f2b4d6a8c1e3f5b7d9a0c2e4f6b813",
+        "leaf_count": 1
+      }
+    ]
+  },
+  "script": [
+    {
+      "after_ms": 400,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "open_received",
+        "batch_id": null,
+        "seq": null,
+        "method": null,
+        "error_code": null,
+        "latency_ms": null,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 400612,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 1900,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "open_verified",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": null,
+        "method": null,
+        "error_code": null,
+        "latency_ms": 1840,
+        "units": null,
+        "remaining": null,
+        "request_bytes": null,
+        "response_bytes": 300000,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 40,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "session_opened",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": null,
+        "method": null,
+        "error_code": null,
+        "latency_ms": 1873,
+        "units": 0,
+        "remaining": 100,
+        "request_bytes": null,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 800,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "0",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 190,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 24,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_completed",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "0",
+        "method": "eth_chainId",
+        "error_code": null,
+        "latency_ms": 4,
+        "units": 1,
+        "remaining": 99,
+        "request_bytes": null,
+        "response_bytes": 44,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 800,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "1",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 194,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 23,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_completed",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "1",
+        "method": "eth_blockNumber",
+        "error_code": null,
+        "latency_ms": 3,
+        "units": 1,
+        "remaining": 98,
+        "request_bytes": null,
+        "response_bytes": 48,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 800,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "2",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 262,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 25,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_completed",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "2",
+        "method": "eth_getBalance",
+        "error_code": null,
+        "latency_ms": 5,
+        "units": 2,
+        "remaining": 96,
+        "request_bytes": null,
+        "response_bytes": 52,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 900,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "2",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 262,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 10,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_replayed",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "2",
+        "method": "eth_getBalance",
+        "error_code": null,
+        "latency_ms": 1,
+        "units": null,
+        "remaining": 96,
+        "request_bytes": null,
+        "response_bytes": 52,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 700,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "5",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 190,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 10,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_rejected",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "5",
+        "method": null,
+        "error_code": "sequence_gap",
+        "latency_ms": 1,
+        "units": null,
+        "remaining": null,
+        "request_bytes": null,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 1200,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "open_received",
+        "batch_id": null,
+        "seq": null,
+        "method": null,
+        "error_code": null,
+        "latency_ms": null,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 400598,
+        "response_bytes": null,
+        "observed_ip": "203.0.113.7",
+        "ip_attribution": "trusted_proxy",
+        "proxy_hop": "10.0.0.1"
+      }
+    },
+    {
+      "after_ms": 30,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "open_rejected",
+        "batch_id": "0x2c51e8a7d3b9f0c4e6a2d8b1f7c3e9a5d0b6f2c8e4a1d7b3f9c5e0a6d2b8f4c1",
+        "seq": null,
+        "method": null,
+        "error_code": "root_not_accepted",
+        "latency_ms": 2,
+        "units": null,
+        "remaining": null,
+        "request_bytes": null,
+        "response_bytes": null,
+        "observed_ip": "203.0.113.7",
+        "ip_attribution": "trusted_proxy",
+        "proxy_hop": "10.0.0.1"
+      }
+    },
+    {
+      "after_ms": 300,
+      "raw": "{\"id\":\"0\",\"kind\":\"rpc_teleported\"}"
+    },
+    {
+      "after_ms": 1500,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "open_received",
+        "batch_id": null,
+        "seq": null,
+        "method": null,
+        "error_code": null,
+        "latency_ms": null,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 400640,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 1750,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "open_verified",
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "seq": null,
+        "method": null,
+        "error_code": null,
+        "latency_ms": 1712,
+        "units": null,
+        "remaining": null,
+        "request_bytes": null,
+        "response_bytes": 299872,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 40,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "session_opened",
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "seq": null,
+        "method": null,
+        "error_code": null,
+        "latency_ms": 1748,
+        "units": 0,
+        "remaining": 100,
+        "request_bytes": null,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 800,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "seq": "0",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 262,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 1500,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "upstream_failed",
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "seq": "0",
+        "method": "eth_getBalance",
+        "error_code": "upstream_failed",
+        "latency_ms": 1502,
+        "units": null,
+        "remaining": null,
+        "request_bytes": null,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 1000,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "seq": "0",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 262,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 26,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_completed",
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "seq": "0",
+        "method": "eth_getBalance",
+        "error_code": null,
+        "latency_ms": 6,
+        "units": 2,
+        "remaining": 98,
+        "request_bytes": null,
+        "response_bytes": 52,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 800,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "3",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 194,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 23,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_completed",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "3",
+        "method": "eth_blockNumber",
+        "error_code": null,
+        "latency_ms": 3,
+        "units": 1,
+        "remaining": 95,
+        "request_bytes": null,
+        "response_bytes": 48,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 800,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "seq": "1",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 190,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 24,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_completed",
+        "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+        "seq": "1",
+        "method": "eth_chainId",
+        "error_code": null,
+        "latency_ms": 4,
+        "units": 1,
+        "remaining": 97,
+        "request_bytes": null,
+        "response_bytes": 44,
+        "observed_ip": "198.51.100.41",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 800,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_received",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "4",
+        "method": null,
+        "error_code": null,
+        "latency_ms": 0,
+        "units": null,
+        "remaining": null,
+        "request_bytes": 262,
+        "response_bytes": null,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    },
+    {
+      "after_ms": 25,
+      "event": {
+        "id": "0",
+        "at_ms": "0",
+        "kind": "rpc_completed",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "4",
+        "method": "eth_getBalance",
+        "error_code": null,
+        "latency_ms": 5,
+        "units": 2,
+        "remaining": 93,
+        "request_bytes": null,
+        "response_bytes": 52,
+        "observed_ip": "198.51.100.23",
+        "ip_attribution": "socket",
+        "proxy_hop": null
+      }
+    }
+  ]
+}
