@@ -27,7 +27,7 @@ fn emit<let N: u32, let A: u32, let B: u32>(kind: str<A>, name: str<B>, inputs: 
 }
 
 fn emit_permutation<let B: u32>(name: str<B>, inputs: [Field; 4]) {
-    let output = std::hash::poseidon2_permutation(inputs, 4);
+    let output = std::hash::poseidon2_permutation(inputs);
     println(f"vector|permutation|{name}|{inputs}|{output}");
 }
 

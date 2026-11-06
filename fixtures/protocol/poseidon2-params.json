@@ -1,5 +1,5 @@
 {
-  "description": "Poseidon2 permutation parameters for the BN254 scalar field. Copied from the Noir ACVM black-box solver at noir-lang/noir tag v1.0.0-beta.12, file acvm-repo/bn254_blackbox_solver/src/poseidon2.rs. Noir executes std::hash::poseidon2_permutation with these values. Rust and TypeScript copy these values; their tests compare them with this file.",
+  "description": "Poseidon2 permutation parameters for the BN254 scalar field. Copied from the Noir ACVM black-box solver at noir-lang/noir tag v1.0.0-beta.12, file acvm-repo/bn254_blackbox_solver/src/poseidon2.rs. Tag v1.0.0-beta.26 (the Noir version of the project, file acvm-repo/bn254_blackbox_solver/src/poseidon2_constants.rs) has the same 260 values in the same order. Noir executes std::hash::poseidon2_permutation with these values. Rust and TypeScript copy these values; their tests compare them with this file.",
   "source": "https://github.com/noir-lang/noir/blob/v1.0.0-beta.12/acvm-repo/bn254_blackbox_solver/src/poseidon2.rs",
   "field_modulus": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
   "t": 4,

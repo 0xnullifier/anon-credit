@@ -10,7 +10,8 @@
 //! - External matrix: the 4x4 matrix of the Poseidon2 paper (Barretenberg form).
 //! - Internal matrix: `diag(D) + J`. `D` is the internal matrix diagonal.
 //! - The constants are in `constants.rs`. They come from `fixtures/protocol/poseidon2-params.json`,
-//!   which is a copy of the Noir ACVM black-box solver constants (Noir v1.0.0-beta.12).
+//!   which is a copy of the Noir ACVM black-box solver constants (Noir v1.0.0-beta.12; the
+//!   values are the same in v1.0.0-beta.26).
 //!
 //! Sponge (`hash`, fixed length `n`):
 //!

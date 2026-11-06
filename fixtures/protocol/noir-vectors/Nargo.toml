@@ -6,4 +6,4 @@ authors = []
 [dependencies]
 # The Noir team moved the public Poseidon2 sponge out of the standard library into this
 # package. Its sponge is the same code as `std::hash::poseidon2::Poseidon2::hash`.
-poseidon = { tag = "v0.2.0", git = "https://github.com/noir-lang/poseidon" }
+poseidon = { tag = "v0.4.0", git = "https://github.com/noir-lang/poseidon" }

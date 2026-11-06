@@ -1,6 +1,6 @@
 {
-  "description": "Poseidon2 (BN254, t = 4, rate 3) reference vectors. Outputs come from Noir: nargo test --show-output in fixtures/protocol/noir-vectors, which uses Poseidon2::hash of noir-lang/poseidon v0.2.0 (the Noir standard library sponge) and std::hash::poseidon2_permutation. Rust, TypeScript, and the batch-open circuit check these values. Byte values are big-endian. 32-byte values enter the circuit as [hi, lo] 128-bit limbs.",
-  "generated_by": "node packages/crypto/scripts/collect-noir-vectors.ts (nargo 1.0.0-beta.12)",
+  "description": "Poseidon2 (BN254, t = 4, rate 3) reference vectors. Outputs come from Noir: nargo test --show-output in fixtures/protocol/noir-vectors, which uses Poseidon2::hash of noir-lang/poseidon v0.4.0 (the public copy of the Noir standard library sponge) and std::hash::poseidon2_permutation. Rust, TypeScript, and the batch-open circuit check these values. Byte values are big-endian. 32-byte values enter the circuit as [hi, lo] 128-bit limbs.",
+  "generated_by": "node packages/crypto/scripts/collect-noir-vectors.ts (nargo 1.0.0-beta.26)",
   "permutation": [
     {
       "name": "zero",
