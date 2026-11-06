@@ -21,6 +21,8 @@
 
 pub mod clock;
 pub mod epoch;
+pub mod events;
+pub mod peer;
 pub mod roots;
 pub mod rpc;
 pub mod settings;
