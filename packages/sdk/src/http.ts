@@ -66,3 +66,14 @@ export async function postJson<S extends z.ZodType>(
   const response = await send(endpoint, path, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }, isolationKey);
   return readJson(response, schema, `POST ${path}`);
 }
+
+export async function putJson<S extends z.ZodType>(
+  endpoint: Endpoint,
+  path: string,
+  body: object,
+  schema: S,
+  isolationKey: string,
+): Promise<z.output<S>> {
+  const response = await send(endpoint, path, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) }, isolationKey);
+  return readJson(response, schema, `PUT ${path}`);
+}

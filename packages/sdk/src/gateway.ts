@@ -6,6 +6,7 @@ import {
   encodeBase64,
   encodeHex,
   gatewayConfigResponseSchema,
+  openChunkResponseSchema,
   openResponseSchema,
   priceTableHash,
   pricesResponseSchema,
@@ -13,6 +14,8 @@ import {
   statusMessageDigest,
   statusResponseSchema,
   type GatewayConfigResponse,
+  type OpenChunkRequest,
+  type OpenChunkResponse,
   type OpenRequest,
   type OpenResponse,
   type PricesResponse,
@@ -22,7 +25,7 @@ import {
   type StatusResponse,
 } from "@anon-credit/protocol";
 import { SdkError } from "./errors.ts";
-import { JSON_HEADERS, getJson, postJson, send, type Endpoint } from "./http.ts";
+import { JSON_HEADERS, getJson, postJson, putJson, send, type Endpoint } from "./http.ts";
 import { signDigest, type SessionKey } from "./keys.ts";
 import type { RandomSource } from "./random.ts";
 import { CONFIG_ISOLATION_KEY } from "./registry.ts";
@@ -33,6 +36,8 @@ export interface GatewayClient {
   readonly prices: () => Promise<PricesResponse>;
   readonly roots: (isolationKey: string) => Promise<RootsResponse>;
   readonly open: (request: OpenRequest, isolationKey: string) => Promise<OpenResponse>;
+  // Send one chunk of a proof upload (PUT /v1/open/chunks).
+  readonly openChunk: (request: OpenChunkRequest, isolationKey: string) => Promise<OpenChunkResponse>;
   // Send a spend request. Return the raw response: the caller reads the headers and the body.
   readonly spend: (request: SpendRequest, isolationKey: string) => Promise<Response>;
   readonly status: (request: StatusRequest, isolationKey: string) => Promise<StatusResponse>;
@@ -50,6 +55,7 @@ export function gatewayClient(endpoint: Endpoint): GatewayClient {
     },
     roots: (isolationKey) => getJson(endpoint, "/v1/roots", rootsResponseSchema, isolationKey),
     open: (request, isolationKey) => postJson(endpoint, "/v1/open", request, openResponseSchema, isolationKey),
+    openChunk: (request, isolationKey) => putJson(endpoint, "/v1/open/chunks", request, openChunkResponseSchema, isolationKey),
     spend: (request, isolationKey) =>
       send(endpoint, "/v1/rpc", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(request) }, isolationKey),
     status: (request, isolationKey) => postJson(endpoint, "/v1/session/status", request, statusResponseSchema, isolationKey),
