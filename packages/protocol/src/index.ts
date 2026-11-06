@@ -7,6 +7,7 @@ export * from "./deployment.ts";
 export * from "./domain.ts";
 export * from "./errors.ts";
 export * from "./gateway-api.ts";
+export * from "./issuer-api.ts";
 export * from "./open.ts";
 export * from "./price.ts";
 export * from "./spend.ts";
