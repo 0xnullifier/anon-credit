@@ -21,6 +21,7 @@
 
 pub mod clock;
 pub mod epoch;
+pub mod roots;
 pub mod rpc;
 pub mod settings;
 pub mod strict_json;
