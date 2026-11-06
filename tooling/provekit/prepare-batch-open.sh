@@ -5,8 +5,9 @@
 # Input: circuits/batch-open/Prover.toml. `cargo run -p anon-credit-registry --example
 # generate_fixtures` writes it (tree of 100 leaves, leaf 37).
 # Output in artifacts/batch-open/: batch-open.pkp, batch-open.pkv, proof.np, proof.native.json,
-# batch-open-standard.pkv (a non-hiding key for negative tests only), nargo-info.txt, and
-# prepare.json (sizes, digests, R1CS size, and native timings).
+# batch-open-standard.pkv (a non-hiding key for negative tests only), nargo-info.txt, abi.json
+# (the Noir ABI; packages/prover tests check it), and prepare.json (sizes, digests, R1CS size,
+# and native timings).
 # The keys are deterministic: the same pins and the same circuit give the same digests.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -66,6 +67,10 @@ trap 'rm -rf "$tmp"' EXIT
 
 (cd "$circuit" && "$NARGO" test >/dev/null && "$NARGO" execute >/dev/null)
 (cd "$circuit" && "$NARGO" info) >"$out/nargo-info.txt"
+node -e 'const fs = require("node:fs");
+  const program = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  fs.writeFileSync(process.argv[2], JSON.stringify(program.abi, null, 2) + "\n");' \
+  "$circuit/target/batch_open.json" "$out/abi.json"
 
 measure prepare "$PROVEKIT_CLI" prepare "$circuit" --force --hash "$PROVEKIT_HASH" \
   --witness-mode "$PROVEKIT_WITNESS_MODE" --pkp "$out/batch-open.pkp" --pkv "$out/batch-open.pkv"

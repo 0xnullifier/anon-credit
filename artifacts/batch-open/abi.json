@@ -1,0 +1,177 @@
+{
+  "parameters": [
+    {
+      "name": "circuit_id",
+      "type": {
+        "kind": "field"
+      },
+      "visibility": "public"
+    },
+    {
+      "name": "deployment_id",
+      "type": {
+        "kind": "array",
+        "length": 2,
+        "type": {
+          "kind": "field"
+        }
+      },
+      "visibility": "public"
+    },
+    {
+      "name": "gateway_id",
+      "type": {
+        "kind": "array",
+        "length": 2,
+        "type": {
+          "kind": "field"
+        }
+      },
+      "visibility": "public"
+    },
+    {
+      "name": "root",
+      "type": {
+        "kind": "field"
+      },
+      "visibility": "public"
+    },
+    {
+      "name": "leaf_count",
+      "type": {
+        "kind": "field"
+      },
+      "visibility": "public"
+    },
+    {
+      "name": "proof_epoch",
+      "type": {
+        "kind": "integer",
+        "sign": "unsigned",
+        "width": 64
+      },
+      "visibility": "public"
+    },
+    {
+      "name": "batch_id",
+      "type": {
+        "kind": "field"
+      },
+      "visibility": "public"
+    },
+    {
+      "name": "binding",
+      "type": {
+        "kind": "field"
+      },
+      "visibility": "public"
+    },
+    {
+      "name": "k",
+      "type": {
+        "kind": "array",
+        "length": 2,
+        "type": {
+          "kind": "field"
+        }
+      },
+      "visibility": "private"
+    },
+    {
+      "name": "expiry",
+      "type": {
+        "kind": "integer",
+        "sign": "unsigned",
+        "width": 64
+      },
+      "visibility": "private"
+    },
+    {
+      "name": "leaf_index",
+      "type": {
+        "kind": "field"
+      },
+      "visibility": "private"
+    },
+    {
+      "name": "siblings",
+      "type": {
+        "kind": "array",
+        "length": 32,
+        "type": {
+          "kind": "field"
+        }
+      },
+      "visibility": "private"
+    },
+    {
+      "name": "peaks",
+      "type": {
+        "kind": "array",
+        "length": 32,
+        "type": {
+          "kind": "field"
+        }
+      },
+      "visibility": "private"
+    },
+    {
+      "name": "session_pub",
+      "type": {
+        "kind": "array",
+        "length": 2,
+        "type": {
+          "kind": "field"
+        }
+      },
+      "visibility": "private"
+    }
+  ],
+  "return_type": null,
+  "error_types": {
+    "1606282130428885142": {
+      "error_kind": "string",
+      "string": "batch id mismatch"
+    },
+    "5220717260492553780": {
+      "error_kind": "string",
+      "string": "batch expired"
+    },
+    "5695433856259109429": {
+      "error_kind": "string",
+      "string": "empty peak slot not zero"
+    },
+    "6820940891850142019": {
+      "error_kind": "string",
+      "string": "circuit id mismatch"
+    },
+    "8430235466644672230": {
+      "error_kind": "string",
+      "string": "sibling padding not zero"
+    },
+    "9268582291456353875": {
+      "error_kind": "string",
+      "string": "leaf index not below leaf count"
+    },
+    "11618583656067614715": {
+      "error_kind": "string",
+      "string": "root mismatch"
+    },
+    "12469291177396340830": {
+      "error_kind": "string",
+      "string": "call to assert_max_bit_size"
+    },
+    "12996949874350931214": {
+      "error_kind": "string",
+      "string": "binding mismatch"
+    },
+    "15835548349546956319": {
+      "error_kind": "string",
+      "string": "Field failed to decompose into specified 32 limbs"
+    },
+    "16387185116392913988": {
+      "error_kind": "string",
+      "string": "peak mismatch"
+    }
+  }
+}
