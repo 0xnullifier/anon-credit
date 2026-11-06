@@ -95,7 +95,7 @@ impl Default for FakeVerifier {
             gate: Mutex::new(None),
             health: Mutex::new(VerifierHealth {
                 pkv_sha256: VERIFIER_HASH.to_hex().trim_start_matches("0x").to_owned(),
-                circuit_id: "batch-open".to_owned(),
+                circuit_id: CIRCUIT_ID.to_hex(),
                 witness_mode: "zk".to_owned(),
             }),
             last_inputs: Mutex::new(Vec::new()),
@@ -366,7 +366,7 @@ impl Harness {
             verifier: verifier.clone(),
             verifier_status: VerifierStatus {
                 pkv_sha256: "99".repeat(32),
-                circuit_id: "batch-open".to_owned(),
+                circuit_id: CIRCUIT_ID.to_hex(),
                 witness_mode: "zk".to_owned(),
             },
             upstream: upstream.clone(),
@@ -492,7 +492,7 @@ impl Harness {
 
 // ----- Client ----------------------------------------------------------------------------
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct OpenOptions {
     /// Session key bound in the proof. `None`: the client key.
     pub proof_session_pub: Option<Bytes32>,
@@ -502,19 +502,6 @@ pub struct OpenOptions {
     pub leaf_count: Option<u32>,
     pub price_table_hash: Option<Bytes32>,
     pub bad_signature: bool,
-}
-
-impl Default for OpenOptions {
-    fn default() -> Self {
-        Self {
-            proof_session_pub: None,
-            proof_epoch: None,
-            root: None,
-            leaf_count: None,
-            price_table_hash: None,
-            bad_signature: false,
-        }
-    }
 }
 
 #[derive(Clone)]

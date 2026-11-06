@@ -50,8 +50,7 @@ async fn gateway_builds_public_inputs_in_circuit_order() {
         anon_credit_crypto::batch::session_binding(&config.gateway_id().0, &client.session_pub().0);
     let [dep_hi, dep_lo] = anon_credit_crypto::bytes32_to_limbs(&config.deployment_id.0);
     let [gw_hi, gw_lo] = anon_credit_crypto::bytes32_to_limbs(&config.gateway_id().0);
-    // TODO(phase 1C): also assert the order against fixtures/protocol/batch-open-public-inputs.json
-    // when that file exists. adapters.rs checks the vectors of batch-open.json.
+    // adapters.rs checks the same builder against fixtures/protocol/batch-open-public-inputs.json.
     let expected = vec![
         anon_credit_crypto::constants::CIRCUIT_ID,
         dep_hi,
