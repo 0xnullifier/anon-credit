@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
+    "dev:mock": "node dev/mock-admin.ts --vite",
+    "mock": "node dev/mock-admin.ts",
     "build": "vite build",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p dev/tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
