@@ -3,17 +3,21 @@
 //! The gateway runs on stable Rust. ProveKit needs nightly Rust, so the verifier runs in a
 //! separate process (`anon-credit-prover serve`, phase 1). The sidecar listens on loopback:
 //!
-//! - `GET /health` returns `{pkv_sha256, circuit_id, witness_mode}`.
-//! - `POST /verify` takes `{proof, public_inputs}` and returns `{ok, duration_ms, error_code?}`.
-//!   `proof` is the browser JSON proof text, or base64 of a binary proof.
+//! - `GET /health` returns `{pkv_sha256, circuit_id, witness_mode, ...}`.
+//! - `POST /verify` takes `{proof, public_inputs}` and returns `{ok, duration_ms, error_code}`.
+//!   The gateway sends `proof` as canonical base64 of the proof bytes that the client sent
+//!   (the browser JSON proof or a binary proof). Status 200 is a verification result; any
+//!   other status is a sidecar failure (for example `busy`), not a proof rejection.
 //!
 //! At startup the gateway requires `pkv_sha256` equal to the deployment
-//! `verifier_artifact_hash` and `witness_mode == "zk"`. It refuses to serve otherwise.
+//! `verifier_artifact_hash`, `witness_mode == "zk"`, and `circuit_id` equal to the batch-open
+//! `CIRCUIT_ID`. It refuses to serve otherwise.
 //!
 //! [`VerifyQueue`] limits the verifications that run at the same time and the requests that
 //! wait. A full queue gives `busy` before any verification work.
 
 use anon_credit_crypto::FieldElement;
+use anon_credit_crypto::constants::CIRCUIT_ID;
 use anon_credit_protocol::Bytes32;
 use anon_credit_protocol::wire::encode_base64;
 use async_trait::async_trait;
@@ -87,6 +91,14 @@ pub enum VerifierCheckError {
     /// The verifier key does not use the hiding witness mode.
     #[error("verifier witness mode {0:?} is not \"zk\"")]
     NotHiding(String),
+    /// The sidecar checks a different circuit ID.
+    #[error("verifier circuit_id {0:?} is not the batch-open CIRCUIT_ID")]
+    WrongCircuit(String),
+}
+
+/// Lowercase hex digits without the `0x` prefix.
+fn normalize_hex(text: &str) -> String {
+    text.strip_prefix("0x").unwrap_or(text).to_ascii_lowercase()
 }
 
 /// Check the verifier health against the deployment. Return the health report on success.
@@ -95,37 +107,32 @@ pub async fn check_verifier(
     verifier_artifact_hash: &Bytes32,
 ) -> Result<VerifierHealth, VerifierCheckError> {
     let health = verifier.health().await?;
-    let found = health
-        .pkv_sha256
-        .strip_prefix("0x")
-        .unwrap_or(&health.pkv_sha256)
-        .to_ascii_lowercase();
-    let expected = hex_digits(verifier_artifact_hash);
+    let found = normalize_hex(&health.pkv_sha256);
+    let expected = normalize_hex(&verifier_artifact_hash.to_hex());
     if found != expected {
         return Err(VerifierCheckError::WrongArtifact { found, expected });
     }
     if health.witness_mode != REQUIRED_WITNESS_MODE {
         return Err(VerifierCheckError::NotHiding(health.witness_mode));
     }
-    Ok(health)
-}
-
-fn hex_digits(value: &Bytes32) -> String {
-    value.to_hex().trim_start_matches("0x").to_owned()
-}
-
-/// The wire form of a proof for the sidecar: the JSON text of a browser proof, or base64.
-pub fn proof_wire_text(proof: &[u8]) -> String {
-    match (proof.first(), std::str::from_utf8(proof)) {
-        (Some(b'{'), Ok(text)) => text.to_owned(),
-        _ => encode_base64(proof),
+    if normalize_hex(&health.circuit_id) != normalize_hex(&CIRCUIT_ID.to_hex()) {
+        return Err(VerifierCheckError::WrongCircuit(health.circuit_id));
     }
+    Ok(health)
 }
 
 #[derive(Serialize)]
 struct VerifyRequest<'a> {
     proof: String,
     public_inputs: &'a [String],
+}
+
+/// Response of the sidecar `POST /verify`.
+#[derive(Deserialize)]
+struct SidecarVerifyResponse {
+    ok: bool,
+    duration_ms: f64,
+    error_code: Option<String>,
 }
 
 /// HTTP client of the verifier sidecar.
@@ -180,7 +187,7 @@ impl ProofVerifier for SidecarVerifier {
     ) -> Result<VerifyOutcome, VerifierError> {
         let inputs: Vec<String> = public_inputs.iter().map(FieldElement::to_hex).collect();
         let body = VerifyRequest {
-            proof: proof_wire_text(proof),
+            proof: encode_base64(proof),
             public_inputs: &inputs,
         };
         let response = self
@@ -190,12 +197,20 @@ impl ProofVerifier for SidecarVerifier {
             .send()
             .await
             .map_err(|e| VerifierError::Unavailable(e.to_string()))?;
-        // The sidecar can send a rejection with a 4xx status and a JSON body.
         let status = response.status();
-        match response.json::<VerifyOutcome>().await {
-            Ok(outcome) => Ok(outcome),
-            Err(_) => Err(VerifierError::Unavailable(format!(
-                "verify status {status}"
+        let reply = response.json::<SidecarVerifyResponse>().await.ok();
+        match (status, reply) {
+            (reqwest::StatusCode::OK, Some(reply)) => Ok(VerifyOutcome {
+                ok: reply.ok,
+                // The sidecar reports fractional milliseconds. Round up to whole milliseconds.
+                duration_ms: reply.duration_ms.max(0.0).ceil() as u64,
+                error_code: reply.error_code,
+            }),
+            (_, reply) => Err(VerifierError::Unavailable(format!(
+                "verify status {status}, code {}",
+                reply
+                    .and_then(|r| r.error_code)
+                    .unwrap_or_else(|| "none".to_owned())
             ))),
         }
     }
@@ -250,10 +265,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn json_proof_goes_as_text_and_binary_as_base64() {
-        assert_eq!(proof_wire_text(br#"{"a":1}"#), r#"{"a":1}"#);
-        assert_eq!(proof_wire_text(&[0, 1, 2]), "AAEC");
-        assert_eq!(proof_wire_text(b"{\xff"), encode_base64(b"{\xff"));
+    fn hex_is_normalized() {
+        assert_eq!(normalize_hex("0xABcd"), "abcd");
+        assert_eq!(normalize_hex("abcd"), "abcd");
     }
 
     #[tokio::test]
