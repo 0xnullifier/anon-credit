@@ -26,15 +26,17 @@ export function Login(props: LoginProps) {
       <form className="panel login-form" onSubmit={submit}>
         <h1>Gateway dashboard</h1>
         <label>
-          Admin API URL
+          <span>Admin API URL</span>
           <input type="url" required value={adminUrl} onChange={(e) => setAdminUrl(e.target.value)} spellCheck={false} />
         </label>
         <label>
-          Public gateway URL (direct probe, prices, roots)
+          <span>Public gateway URL (direct probe, prices, roots)</span>
           <input type="url" required value={gatewayUrl} onChange={(e) => setGatewayUrl(e.target.value)} spellCheck={false} />
         </label>
         <label>
-          Admin token (<code>GATEWAY_ADMIN_TOKEN</code>)
+          <span>
+            Admin token (<code>GATEWAY_ADMIN_TOKEN</code>)
+          </span>
           <input
             type="password"
             required
