@@ -1,10 +1,22 @@
-// Test page for the ProveKit browser adapter. It proves the sample circuit and writes the
-// result as JSON into #result. dev/gate.ts drives this page in headless Chromium.
+// Test page for the ProveKit browser adapter. It proves one circuit and writes the result as
+// JSON into #result. dev/gate.ts drives this page in headless Chromium.
 //
-// Query parameters: manifest (URL), sha256 (pinned manifest digest), mode (scalar or
-// threaded), threads, runs (number of proofs; the first proof is cold).
+// Query parameters: circuit (sample or batch-open), manifest (URL), sha256 (pinned manifest
+// digest), mode (scalar or threaded), threads, runs (number of proofs; the first proof is cold).
+//
+// The batch-open inputs come from /batch-open/gate-witness.json (artifacts/batch-open/), the
+// real witness that crates/registry makes for a tree of 100 leaves. The page validates it with
+// batchOpenInputsSchema before it sends it to the worker.
 
-import { createBatchOpenProver, ProverError, threadModeSchema, type ProofResult } from "../src/index.ts";
+import type { InputMap } from "@noir-lang/noir_js";
+import { z } from "zod";
+import {
+  batchOpenInputsSchema,
+  createBatchOpenProver,
+  ProverError,
+  threadModeSchema,
+  type ProofResult,
+} from "../src/index.ts";
 
 // The sample witness. These are the values in circuits/provekit-sample/Prover.toml.
 // They are test values, not secrets.
@@ -17,6 +29,9 @@ const SAMPLE_INPUTS = {
   batch_id: "0x00292c827d85a6f524c3dc038c7d1fef7c3a63d666fc46b710ff5c98eeed772e",
   epoch: "999",
 };
+
+const circuitSchema = z.enum(["sample", "batch-open"]);
+type Circuit = z.infer<typeof circuitSchema>;
 
 const params = new URL(location.href).searchParams;
 const output = document.getElementById("result");
@@ -36,13 +51,36 @@ function summary(result: ProofResult): object {
   };
 }
 
+function defaultManifest(circuit: Circuit): string {
+  switch (circuit) {
+    case "sample":
+      return "/provekit-sample/prover-manifest.json";
+    case "batch-open":
+      return "/batch-open/prover-manifest.json";
+  }
+}
+
+async function circuitInputs(circuit: Circuit): Promise<InputMap> {
+  switch (circuit) {
+    case "sample":
+      return SAMPLE_INPUTS;
+    case "batch-open": {
+      const response = await fetch("/batch-open/gate-witness.json", { cache: "no-store" });
+      if (!response.ok) throw new Error(`gate witness request returned ${response.status}`);
+      return batchOpenInputsSchema.parse(await response.json());
+    }
+  }
+}
+
 async function run(): Promise<void> {
+  const circuit = circuitSchema.parse(params.get("circuit") ?? "sample");
+  const inputs = await circuitInputs(circuit);
   const mode = threadModeSchema.parse(params.get("mode") ?? "scalar");
   const runs = Math.max(1, Number(params.get("runs") ?? "2"));
   const threadsParam = params.get("threads");
   const start = performance.now();
   const prover = await createBatchOpenProver({
-    manifestUrl: params.get("manifest") ?? "/provekit-sample/prover-manifest.json",
+    manifestUrl: params.get("manifest") ?? defaultManifest(circuit),
     manifestSha256: params.get("sha256") ?? "",
     mode,
     ...(threadsParam === null ? {} : { threads: Number(threadsParam) }),
@@ -51,7 +89,7 @@ async function run(): Promise<void> {
   let coldMs = 0;
   try {
     for (let index = 0; index < runs; index += 1) {
-      results.push(await prover.prove(SAMPLE_INPUTS));
+      results.push(await prover.prove(inputs));
       if (index === 0) coldMs = performance.now() - start;
     }
   } finally {
@@ -59,6 +97,7 @@ async function run(): Promise<void> {
   }
   const first = results[0];
   report("done", {
+    circuit,
     info: prover.info,
     crossOriginIsolated,
     userAgent: navigator.userAgent,
