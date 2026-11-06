@@ -15,6 +15,10 @@
 //!
 //! The gateway does not accept public inputs from the client. It builds them from the open
 //! request, its configuration, and the root record, with [`BatchOpenPublicInputs::for_open`].
+//!
+//! `fixtures/protocol/batch-open-public-inputs.json` is the order contract. The test
+//! `tests/public_inputs.rs` checks [`PUBLIC_INPUT_NAMES`] and [`BatchOpenPublicInputs::to_fields`]
+//! against it. `crates/prover` checks the same vector against a real ProveKit proof.
 
 use crate::batch::session_binding;
 use crate::constants::CIRCUIT_ID;
@@ -22,6 +26,20 @@ use crate::field::{FieldElement, bytes32_to_limbs};
 
 /// Number of public inputs of the batch-open circuit.
 pub const PUBLIC_INPUT_COUNT: usize = 10;
+
+/// Names of the public inputs, in circuit order. A 32-byte value has two names (`_hi`, `_lo`).
+pub const PUBLIC_INPUT_NAMES: [&str; PUBLIC_INPUT_COUNT] = [
+    "circuit_id",
+    "deployment_id_hi",
+    "deployment_id_lo",
+    "gateway_id_hi",
+    "gateway_id_lo",
+    "root",
+    "leaf_count",
+    "proof_epoch",
+    "batch_id",
+    "binding",
+];
 
 /// The public inputs of one batch-open proof.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

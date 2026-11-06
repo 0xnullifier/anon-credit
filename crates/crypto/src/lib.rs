@@ -26,4 +26,4 @@ pub mod public_inputs;
 pub use ed25519::{ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN, Ed25519Error, verify_ed25519};
 pub use field::{FIELD_BYTES, FieldElement, FieldError, bytes32_to_limbs};
 pub use keccak::{KECCAK256_LEN, keccak256};
-pub use public_inputs::{BatchOpenPublicInputs, PUBLIC_INPUT_COUNT};
+pub use public_inputs::{BatchOpenPublicInputs, PUBLIC_INPUT_COUNT, PUBLIC_INPUT_NAMES};
