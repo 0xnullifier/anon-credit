@@ -31,6 +31,7 @@ pub mod peer;
 pub mod public;
 pub mod roots;
 pub mod rpc;
+pub mod server;
 pub mod settings;
 pub mod spend;
 pub mod status;
