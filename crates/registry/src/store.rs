@@ -5,7 +5,8 @@
 //! Thus a proof against an earlier leaf count (a root snapshot) reads only nodes that existed
 //! at that leaf count.
 //!
-//! Phase 2 adds a SQLite store. It must write one [`AppendUpdate`] in one transaction.
+//! [`crate::sqlite::SqliteStore`] is the SQLite store. It writes one [`AppendUpdate`] in one
+//! transaction.
 
 use anon_credit_crypto::FieldElement;
 
@@ -87,6 +88,20 @@ impl MemoryStore {
         Self {
             leaves: Vec::new(),
             levels: vec![Vec::new(); NODE_HEIGHTS],
+        }
+    }
+}
+
+impl MemoryStore {
+    /// Remove all leaves from `leaf_count` on, and the nodes that cover them.
+    ///
+    /// Only for [`crate::sqlite::SqliteStore`], to undo staged appends after a failed
+    /// transaction. The result is the same as the store after the first `leaf_count` appends.
+    pub(crate) fn truncate(&mut self, leaf_count: u32) {
+        self.leaves.truncate(leaf_count as usize);
+        for (height, level) in self.levels.iter_mut().enumerate() {
+            let keep = u64::from(leaf_count).checked_shr(u32::try_from(height).unwrap_or(u32::MAX));
+            level.truncate(keep.unwrap_or(0) as usize);
         }
     }
 }

@@ -14,6 +14,7 @@ workspace = true
 anon-credit-crypto.workspace = true
 anon-credit-protocol.workspace = true
 serde.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
@@ -22,3 +23,4 @@ thiserror.workspace = true
 proptest = "1.12.0"
 serde_json.workspace = true
 hex.workspace = true
+tokio.workspace = true

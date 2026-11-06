@@ -79,6 +79,12 @@ impl<S: MmrStore> Mmr<S> {
         &self.store
     }
 
+    /// The store, for changes that are not appends (for example the staged writes of
+    /// [`crate::sqlite::SqliteStore`]). Do not change the leaves or nodes through it.
+    pub fn store_mut(&mut self) -> &mut S {
+        &mut self.store
+    }
+
     /// Number of leaves.
     pub fn leaf_count(&self) -> Result<u32, MmrError<S::Error>> {
         self.store.leaf_count().map_err(MmrError::Store)
