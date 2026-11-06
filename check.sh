@@ -3,8 +3,10 @@
 #
 # Required: Rust format, Clippy, Rust tests, TypeScript type checks, TypeScript tests,
 # and a scan of tracked configuration for secrets.
-# Optional: Foundry and Noir checks. They run if forge and nargo are found.
-# Set SKIP_OPTIONAL=1 to skip them.
+# Optional: Foundry and ProveKit checks. They run if forge and the ProveKit toolchain are found.
+# Noir: the circuits need nargo 1.0.0-beta.26 (tooling/provekit/pins.env). If it is missing,
+# the circuit step fails and tells how to install it.
+# Set SKIP_OPTIONAL=1 to skip the Foundry, Noir, and ProveKit steps.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -73,30 +75,26 @@ else
   step "forge not found; skip contract checks"
 fi
 
-nargo_bin=$(find_tool nargo "$HOME/.nargo/bin/nargo")
-if [ -n "$nargo_bin" ]; then
-  step "nargo test"
-  (cd circuits/batch-open && "$nargo_bin" test)
-else
-  step "nargo not found; skip circuit checks"
-fi
-
-# ProveKit. crates/prover is a separate workspace on the nightly toolchain that ProveKit pins.
-# The sample circuit needs the Noir version that ProveKit links. Both run only if installed
-# (tooling/provekit/install.sh). PROVEKIT_GATE=1 also runs the Chromium browser gate.
+# Noir. All circuits use the Noir version that ProveKit links (pins.env: NOIR_VERSION, NARGO).
 # shellcheck source=tooling/provekit/pins.env
 source tooling/provekit/pins.env
+step "nargo $NOIR_VERSION test (batch-open, provekit-sample)"
+if [ ! -x "$NARGO" ] || ! "$NARGO" --version | grep -q "nargo version = $NOIR_VERSION"; then
+  echo "FAIL: nargo $NOIR_VERSION not found at $NARGO"
+  echo "Install it with tooling/provekit/install.sh, or set NARGO to its path."
+  exit 1
+fi
+(cd circuits/batch-open && "$NARGO" test)
+(cd circuits/provekit-sample && "$NARGO" test)
+
+# ProveKit. crates/prover is a separate workspace on the nightly toolchain that ProveKit pins.
+# It runs only if that toolchain is installed (tooling/provekit/install.sh).
+# PROVEKIT_GATE=1 also runs the Chromium browser gates (sample and batch-open circuits).
 if rustup toolchain list 2>/dev/null | grep -q "^$PROVEKIT_RUST_TOOLCHAIN"; then
   step "crates/prover fmt, clippy, test ($PROVEKIT_RUST_TOOLCHAIN)"
   (cd crates/prover && cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo test)
 else
   step "$PROVEKIT_RUST_TOOLCHAIN not installed; skip crates/prover"
-fi
-if [ -x "$NARGO" ]; then
-  step "nargo $NOIR_VERSION test (provekit-sample)"
-  (cd circuits/provekit-sample && "$NARGO" test)
-else
-  step "nargo $NOIR_VERSION not found at $NARGO; skip provekit-sample"
 fi
 if [ "${PROVEKIT_GATE:-0}" = "1" ]; then
   step "ProveKit browser gate (Chromium proves, Rust verifies)"
