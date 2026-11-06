@@ -6,13 +6,19 @@
   "type": "module",
   "scripts": {
     "start": "node run.ts",
-    "typecheck": "tsc -p tsconfig.json",
+    "integration": "node integration.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p browser/tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@anon-credit/anon-transport": "workspace:*",
+    "@anon-credit/crypto": "workspace:*",
     "@anon-credit/protocol": "workspace:*",
+    "@anon-credit/prover": "workspace:*",
     "@anon-credit/sdk": "workspace:*",
     "playwright-core": "1.65.0",
+    "viem": "2.57.11",
+    "vite": "8.3.6",
     "zod": "4.6.7"
   }
 }
