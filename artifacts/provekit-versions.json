@@ -1,0 +1,49 @@
+{
+  "description": "Pinned ProveKit toolchain for anon-credit phase 1. tooling/provekit/pins.env has the same values.",
+  "provekit": {
+    "repo": "https://github.com/worldfnd/provekit",
+    "rev": "201b7b639f5dd5632c01561fcb2a96c2fc8851f3",
+    "branch": "main",
+    "commitDate": "2026-11-04",
+    "commitTitle": "Merge pull request #513 from worldfnd/zkfr/streamline-covectors",
+    "rustToolchain": "nightly-2026-03-04",
+    "whir": { "repo": "https://github.com/worldfnd/whir.git", "rev": "d2b16529d0a4fad4f53d088281e9062898d35f5b" },
+    "artifactFormats": { "pkp": "3.0", "pkv": "3.0", "proofBinary": "3.0" },
+    "prepare": { "hash": "skyscraper", "witnessMode": "zk" },
+    "localPatch": "tooling/provekit/patches/0001-provekit-wasm-optional-threads.patch (adds the optional `threads` feature to tooling/provekit-wasm for the scalar build; the published SDK branch has the same feature)"
+  },
+  "noir": {
+    "version": "1.0.0-beta.26",
+    "commit": "40d6574f851d926f93e0c3a271bac3e6e82ac905",
+    "nargoArchive": "https://github.com/noir-lang/noir/releases/download/v1.0.0-beta.26/nargo-aarch64-apple-darwin.tar.gz",
+    "nargoArchiveSha256": "2b8a938a0eae411d0105133eb1eb97b0b1f1942037b2f42c9fac72456f5e9b32",
+    "installedAt": "$HOME/dev/noir-1.0.0-beta.26/bin/nargo (not on PATH; ~/.nargo/bin/nargo is still 1.0.0-beta.12)",
+    "npm": {
+      "@noir-lang/noir_js": "1.0.0-beta.26",
+      "@noir-lang/acvm_js": "1.0.0-beta.26",
+      "@noir-lang/noirc_abi": "1.0.0-beta.26"
+    }
+  },
+  "wasm": {
+    "builtFrom": "tooling/provekit-wasm at the pinned rev",
+    "wasmBindgenCli": "0.2.113",
+    "scalarRustFlags": "-Ctarget-cpu=mvp -Ctarget-feature=-simd128,-relaxed-simd, --no-default-features",
+    "threadedRustFlags": "ProveKit .cargo/config.toml (+atomics,+bulk-memory,+mutable-globals,+simd128,+relaxed-simd, shared memory)",
+    "wasmOpt": "not run",
+    "output": "artifacts/provekit-wasm/{scalar,threaded} (git ignored; tooling/provekit/build-wasm.sh)"
+  },
+  "publishedBrowserSdk": {
+    "package": "@worldcoin/provekit",
+    "latest": "0.1.1",
+    "builtFromRev": "11bfde0c3409ae55a924ff07ce394e7cdab6c040 (branch codex/provekit-safari-scalar-wasm, based on main 2026-07-20)",
+    "noir": "1.0.0-beta.20",
+    "artifactFormats": { "pkp": "2.x", "pkv": "2.1+" },
+    "used": false,
+    "reason": "At its source commit the witness commitment is non-hiding (WhirR1CSScheme docs: 'Witness ZK is off ... WHIR openings leak witness values'). It also rejects the PKP/PKV 3.0 artifacts of the pinned rev. No branch has both the JS SDK and the hiding witness mode."
+  },
+  "alternativeRelease": {
+    "tag": "v1.0.3",
+    "rev": "00cbd7daba13e6ee1ee05d0b4a096a9ea0427ac4",
+    "note": "Stable v1 line. Witness commitment uses whir_zk (always zero knowledge) with a blinded sumcheck. Noir 1.0.0-beta.26 through provekit_* crates. Its provekit-wasm has no single-thread feature, and no published JS SDK matches it. Not used by the gate."
+  }
+}

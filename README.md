@@ -335,3 +335,148 @@ TypeScript (`pnpm-lock.yaml` pins the full set): typescript 7.0.2, vitest 5.1.0,
 @noble/hashes 2.4.0, @noble/curves 2.4.0 (tests only), react and react-dom 19.3.1, vite 8.3.6,
 @vitejs/plugin-react 6.2.1, playwright-core 1.65.0, @anon-rpc/browser-harness 0.4.0,
 @types/node 26.6.6.
+
+## ProveKit (phase 1A)
+
+Status: the gate passes. Headless Chromium proves the sample circuit with the ProveKit WASM
+prover, and the Rust verifier in `crates/prover` verifies the browser proof. The Rust verifier
+also rejects a tampered proof, a proof with a changed public input, and a wrong expected input.
+
+### Pins
+
+| Item | Pin |
+|---|---|
+| ProveKit | `worldfnd/provekit` main at `201b7b639f5dd5632c01561fcb2a96c2fc8851f3` (2026-11-04) |
+| ProveKit Rust toolchain | `nightly-2026-03-04` (rustc 1.96.0-nightly `d9563937f`) |
+| WHIR (from ProveKit) | `worldfnd/whir` at `d2b16529d0a4fad4f53d088281e9062898d35f5b` |
+| Noir | 1.0.0-beta.26 (`40d6574`). ProveKit links this version. |
+| noir_js, acvm_js, noirc_abi | 1.0.0-beta.26 (npm, exact) |
+| wasm-bindgen-cli | 0.2.113 (equal to the crate version in ProveKit's `Cargo.lock`) |
+| `prepare` options | `--hash skyscraper --witness-mode zk` |
+| Artifact formats | PKP 3.0, PKV 3.0, binary proof 3.0 |
+
+`tooling/provekit/pins.env` has these values. `artifacts/provekit-versions.json` records them
+with provenance.
+
+Noir: ProveKit compiles the circuit with its own Noir 1.0.0-beta.26 frontend. The nargo from
+noirup (`~/.nargo/bin`, 1.0.0-beta.12) cannot compile code for this frontend: beta.26 removed
+`u1` and keeps only `std::hash::poseidon2_permutation` (the sponge is private to the standard
+library). `install.sh` puts nargo 1.0.0-beta.26 in `~/dev/noir-1.0.0-beta.26/bin` and does not
+replace the noirup nargo. Move `circuits/batch-open` to beta.26 before it is prepared with ProveKit.
+
+### Why not the published `@worldcoin/provekit` SDK
+
+The latest SDK is 0.1.1. It comes from commit `11bfde0c` (branch
+`codex/provekit-safari-scalar-wasm`, Noir 1.0.0-beta.20). At that commit the witness commitment
+is not hiding: the ProveKit source says "Witness ZK is off ... WHIR openings leak witness
+values". The SDK also rejects PKP/PKV 3.0 artifacts. No ProveKit branch has both the JS SDK and
+the hiding witness mode. Thus `packages/prover` uses the first-party `tooling/provekit-wasm`
+bindings, built from the pinned commit, with its own loader and worker. This is the same prover.
+It is not a replacement prover.
+
+The pinned commit has no single-thread feature in `tooling/provekit-wasm`. The patch
+`tooling/provekit/patches/0001-provekit-wasm-optional-threads.patch` adds the optional
+`threads` feature. The SDK branch has the same change.
+
+ProveKit recommends the `v1` line for production. `v1.0.3` uses an always-on `whir_zk` witness
+commitment. It has no single-thread WASM feature and no matching published SDK. The gate does
+not use it. See `alternativeRelease` in `artifacts/provekit-versions.json`.
+
+### Hiding mode
+
+- `provekit-cli prepare --witness-mode zk` (the default at the pinned commit) makes a hiding
+  witness commitment (WHIR "zook" commitment in `Mode::ZeroKnowledge`). The key records the
+  mode. `prove` and `verify` need no flag.
+- The Spartan sumcheck is always masked by a committed blinding polynomial.
+- `PinnedVerifier` in `crates/prover` rejects a verifier key in `Mode::Standard`
+  (`LoadError::NotHiding`). The test `non_hiding_key_is_rejected` uses a `--witness-mode standard` key.
+- The prover manifest schema in `packages/prover` accepts only `"witnessMode": "zk"`.
+- Each proof uses fresh randomness (`getrandom`, browser `crypto.getRandomValues`). Two proofs of
+  the same witness have different bytes.
+- Limit: the ProveKit source says that a hiding commitment alone is not full proof zero
+  knowledge: "the alpha, public-input, and challenge evaluations are still sent in the clear".
+  Phase 1 does not establish full zero knowledge for the batch-open statement. A review of this
+  leakage for the full circuit is necessary before the protocol freeze.
+
+### Layout
+
+| Path | Contents |
+|---|---|
+| `tooling/provekit/` | `pins.env`, `install.sh` (CLI, nargo, wasm-bindgen), `build-wasm.sh`, `prepare-sample.sh`, the WASM patch |
+| `circuits/provekit-sample/` | Sample circuit: Poseidon2 batch ID, depth-16 Merkle path with a private index, expiry check. 3 public inputs, 5136 constraints. |
+| `crates/prover/` | `anon-credit-prover`: `PinnedVerifier`, `Proof`, `PublicInput`, `Sha256Digest`; binary `anon-credit-prover` (`verify`, `bench`, `inspect`) |
+| `packages/prover/` | `@anon-credit/prover`: manifest and digest checks, worker, `createBatchOpenProver`; `dev/` test page and `dev/gate.ts` |
+| `artifacts/provekit-sample/` | Checked in (1.5 MB): `sample.pkp`, `sample.pkv`, `sample-standard.pkv` (non-hiding, tests only), `proof.np`, `proof.native.json`, `proof.browser.json` |
+| `artifacts/provekit-wasm/` | Built WASM (about 5 MB each). Git ignores it. |
+| `artifacts/provekit-sample/prover-manifest.json` | Written by the gate. Git ignores it, because the WASM digests change with the build machine. |
+| `artifacts/provekit-sample-results.json` | Measured gate results |
+
+`crates/prover` is not a member of the root workspace. ProveKit needs nightly features
+(`portable_simd`, `vec_split_at_spare`), and the root workspace uses stable Rust. The crate has
+its own `rust-toolchain.toml` and `Cargo.lock`. The gateway does not depend on it yet. Phase 3
+must select one of these: build the gateway with the ProveKit toolchain, or run the verifier in
+a separate process.
+
+In debug builds, the dependencies must have debug assertions off. With them on, WHIR expects a
+transcript pattern that only debug provers write, and it panics on release proofs.
+`crates/prover/Cargo.toml` sets this. The verifier also catches a panic and returns a rejection.
+
+### Reproduce
+
+```sh
+export PATH="$HOME/.foundry/bin:$HOME/.nargo/bin:$PATH"
+tooling/provekit/install.sh          # ProveKit CLI at the pin, nargo beta.26, wasm-bindgen-cli
+tooling/provekit/prepare-sample.sh   # nargo test, prepare (zk), native prove and verify
+
+# Native verify and bench with the Rust adapter
+cd crates/prover
+cargo run --release -- verify --pkv ../../artifacts/provekit-sample/sample.pkv \
+  --pkv-sha256 2924a15365089797df27e664edb73d8db918b445b4a4cea02d5effc0ea8c5260 \
+  --proof ../../artifacts/provekit-sample/proof.browser.json \
+  --public-input 0x2defe77ad67d41ed53118ca13e97d82c88a0796fc3adb8858509598d115eccb1 \
+  --public-input 0x292c827d85a6f524c3dc038c7d1fef7c3a63d666fc46b710ff5c98eeed772e \
+  --public-input 0x3e7
+cargo test                           # 13 integration tests, 5 unit tests
+cd ../..
+
+# Browser gate: scalar (no isolation) and threaded (COOP/COEP) proofs in headless Chromium,
+# verified by the Rust adapter. Set CHROMIUM_PATH or use the Playwright cache.
+tooling/provekit/build-wasm.sh
+node packages/prover/dev/gate.ts     # GATE_WRITE_FIXTURE=1 also replaces proof.browser.json
+PROVEKIT_GATE=1 ./check.sh           # all checks and the gate
+
+pnpm --filter @anon-credit/prover dev   # test page on http://localhost:5180 (scalar)
+```
+
+The threaded build needs a cross-origin isolated page:
+
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+All scripts, workers, and WASM files must be same-origin or send a compatible
+`Cross-Origin-Resource-Policy`. The scalar build needs no special headers.
+
+### Measured results (sample circuit, Apple M4 Pro, 12 cores, HeadlessChrome 149)
+
+These numbers are for the 5136-constraint sample circuit. They do not predict the full
+batch-open circuit.
+
+| Measurement | Scalar WASM | Threaded WASM (8 threads) | Native CLI |
+|---|---:|---:|---:|
+| Warm proof (witness and proving) | 252 ms | 90 ms | 69 ms |
+| Cold first proof (worker start, download, checks, init, proof) | 418 ms | 269 ms | |
+| WASM linear memory after proving | 11.6 MiB | 27.8 MiB | 10.5 MB peak |
+| Artifact download, raw (WASM, glue, PKP) | 5.34 MB | 5.51 MB | |
+| Artifact download, gzip | 1.29 MB | 1.33 MB | |
+
+| Proof and verification | Value |
+|---|---:|
+| Browser proof (JSON encoding) | 450 KB (299 KB gzip) |
+| Native proof (binary `.np`, zstd) | 294 KB |
+| Rust verify, browser proof, 1 thread (`RAYON_NUM_THREADS=1`) | 13.2 ms median |
+| Rust verify, browser proof, 12 threads | 9.0 ms median |
+
+The noir_js and ACVM WASM files (about 3.7 MB raw) are part of the page bundle, not of the
+manifest. The download sizes above do not include them. `wasm-opt` was not run.
