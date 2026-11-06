@@ -3,6 +3,9 @@
 //
 // The gateway does not accept public inputs from the client. It builds them from the open
 // request, its configuration, and the root record with batchOpenPublicInputs.
+//
+// fixtures/protocol/batch-open-public-inputs.json is the order contract. public-inputs.test.ts
+// checks PUBLIC_INPUT_NAMES and batchOpenPublicInputs against it.
 
 import { requireLength, requireU64 } from "@anon-credit/protocol";
 import { CIRCUIT_ID, MAX_LEAVES } from "./constants.generated.ts";
