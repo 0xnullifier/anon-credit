@@ -25,6 +25,13 @@ artifacts/**
 *.pkp
 *.pkv
 *.bin
+# Small ProveKit sample artifacts for the prover tests (under 2 MB in total).
+# artifacts/provekit-wasm/ is built by tooling/provekit/build-wasm.sh and stays ignored.
+!artifacts/provekit-versions.json
+!artifacts/provekit-sample-results.json
+!artifacts/provekit-sample/
+!artifacts/provekit-sample/*
+artifacts/provekit-sample/prover-manifest.json
 
 # Local databases
 *.db
