@@ -25,3 +25,4 @@ pub mod rpc;
 pub mod settings;
 pub mod strict_json;
 pub mod upstream;
+pub mod verifier;
