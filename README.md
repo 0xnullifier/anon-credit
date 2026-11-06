@@ -380,7 +380,8 @@ The pinned commit has no single-thread feature in `tooling/provekit-wasm`. The p
 
 ProveKit recommends the `v1` line for production. `v1.0.3` uses an always-on `whir_zk` witness
 commitment. It has no single-thread WASM feature and no matching published SDK. The gate does
-not use it. See `alternativeRelease` in `artifacts/provekit-versions.json`.
+not use it. On the sample circuit, its native proof is 573 KB (the pinned commit: 294 KB),
+and native proving and verification are slower. See `alternativeRelease` in `artifacts/provekit-versions.json`.
 
 ### Hiding mode
 
