@@ -71,3 +71,14 @@ export function count(decimal: string): string {
 export function difference(a: string | null, b: string | null): number | null {
   return a === null || b === null ? null : Number(BigInt(a) - BigInt(b));
 }
+
+// Start time (UTC) of an epoch: epoch * epochSeconds. Bad text is shown as it is.
+export function epochStartUtc(epoch: string, epochSeconds: number): string {
+  return /^(?:0|[1-9][0-9]*)$/.test(epoch) ? utcFromSeconds((BigInt(epoch) * BigInt(epochSeconds)).toString()) : epoch;
+}
+
+// End time (UTC) of an epoch: the start of the next epoch. A session can spend until the end
+// of its deadline epoch.
+export function epochEndUtc(epoch: string, epochSeconds: number): string {
+  return /^(?:0|[1-9][0-9]*)$/.test(epoch) ? utcFromSeconds(((BigInt(epoch) + 1n) * BigInt(epochSeconds)).toString()) : epoch;
+}

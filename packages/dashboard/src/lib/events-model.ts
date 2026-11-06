@@ -158,3 +158,120 @@ export const isSpend = (event: GatewayEvent): boolean => event.kind === "rpc_com
 export const isNewOpen = (event: GatewayEvent): boolean => event.kind === "session_opened" && event.units !== null;
 // Proof verification time at the sidecar.
 export const isVerify = (event: GatewayEvent): boolean => event.kind === "open_verified";
+
+// The outcome events of a spend request. rpc_received is not an outcome.
+function isSpendOutcome(event: GatewayEvent): boolean {
+  switch (event.kind) {
+    case "rpc_completed":
+    case "rpc_replayed":
+    case "rpc_rejected":
+    case "upstream_failed":
+    case "storage_failed":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export interface SessionObservation {
+  // The newest session_opened event.
+  readonly opened: GatewayEvent;
+  // The spend outcome events of the same batch after the open, oldest first.
+  readonly spends: readonly GatewayEvent[];
+}
+
+// The newest session_opened event and the spend outcomes of its batch. Null if no session
+// opened in the received events.
+export function latestOpenedSession(events: readonly GatewayEvent[]): SessionObservation | null {
+  let opened: GatewayEvent | null = null;
+  for (let i = events.length - 1; i >= 0 && opened === null; i -= 1) {
+    const event = events[i];
+    if (event !== undefined && event.kind === "session_opened" && event.batch_id !== null) {
+      opened = event;
+    }
+  }
+  if (opened === null) {
+    return null;
+  }
+  const batch = opened.batch_id;
+  const after = opened.id;
+  const spends = events.filter((event) => event.batch_id === batch && isSpendOutcome(event) && compareIds(event.id, after) > 0);
+  return { opened, spends };
+}
+
+// The observed addresses of events, without repeats and without "unavailable", in order.
+export function distinctObservedIps(events: readonly GatewayEvent[]): string[] {
+  const seen = new Set<string>();
+  for (const event of events) {
+    if (event.observed_ip !== "unavailable") {
+      seen.add(event.observed_ip);
+    }
+  }
+  return [...seen];
+}
+
+// Compare the direct probe address with all the addresses of one session.
+// "same" if one session address is the probe address.
+export function compareObservedAll(probeIp: string | null, sessionIps: readonly string[]): Comparison {
+  switch (true) {
+    case probeIp === null || probeIp === "unavailable" || sessionIps.length === 0:
+      return "incomplete";
+    case sessionIps.includes(probeIp ?? ""):
+      return "same";
+    default:
+      return "different";
+  }
+}
+
+// How a timeline entry belongs to the batch.
+// "batch": the event has the batch ID.
+// "order": an open_received event. The gateway sends open_received before it parses the body,
+// so the event has no batch ID. The timeline uses the newest open_received from the same
+// observed address before the first open event of the batch.
+export type TimelineMatch = "batch" | "order";
+
+export interface TimelineEntry {
+  readonly event: GatewayEvent;
+  readonly match: TimelineMatch;
+  // Milliseconds after the first entry of the timeline.
+  readonly offsetMs: number;
+}
+
+// Events of the open path that have a batch ID.
+function isOpenStep(event: GatewayEvent): boolean {
+  switch (event.kind) {
+    case "open_verified":
+    case "open_rejected":
+    case "session_opened":
+      return true;
+    default:
+      return false;
+  }
+}
+
+// The timeline of one batch: open_received -> open_verified -> session_opened -> rpc_*.
+// The events must be oldest first.
+export function sessionTimeline(events: readonly GatewayEvent[], batchId: string): TimelineEntry[] {
+  const own = events.filter((event) => event.batch_id === batchId);
+  const first = own[0];
+  const picked: { readonly event: GatewayEvent; readonly match: TimelineMatch }[] = [];
+  if (first !== undefined && isOpenStep(first)) {
+    let received: GatewayEvent | null = null;
+    for (const event of events) {
+      if (compareIds(event.id, first.id) >= 0) {
+        break;
+      }
+      if (event.kind === "open_received" && event.batch_id === null && event.observed_ip === first.observed_ip) {
+        received = event;
+      }
+    }
+    if (received !== null) {
+      picked.push({ event: received, match: "order" });
+    }
+  }
+  for (const event of own) {
+    picked.push({ event, match: "batch" });
+  }
+  const start = Number(picked[0]?.event.at_ms ?? "0");
+  return picked.map(({ event, match }) => ({ event, match, offsetMs: Number(event.at_ms) - start }));
+}
