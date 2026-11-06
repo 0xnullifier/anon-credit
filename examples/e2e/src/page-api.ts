@@ -43,6 +43,21 @@ export const pageRequestSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("transportInfo") }),
   z.strictObject({ op: z.literal("peerProbe") }),
   z.strictObject({ op: z.literal("close") }),
+  // Start a transport, send one GET, and return the status and all response headers. It needs
+  // no setup and no services. Used to check what headers survive the Anon-RPC harness.
+  z.strictObject({
+    op: z.literal("transportProbe"),
+    transport: transportChoiceSchema,
+    bootstrapRpcUrl: z.url().optional(),
+    readyTimeoutMs: z.number().int().positive(),
+    url: z.url(),
+    isolationKey: z.string(),
+    method: z.enum(["GET", "POST"]),
+    // POST only: size of a JSON body (the open request with a proof is about 640 KB).
+    bodyBytes: z.number().int().min(0).max(4_000_000),
+    // POST only: send the body as text or as a ReadableStream.
+    bodyKind: z.enum(["text", "stream"]),
+  }),
 ]);
 export type PageRequest = z.input<typeof pageRequestSchema>;
 
@@ -158,3 +173,11 @@ export const transportInfoValueSchema = z.strictObject({
 export const peerValueSchema = z.strictObject({ observedIp: z.string(), attribution: z.string() });
 
 export const emptyValueSchema = z.strictObject({});
+
+export const transportProbeValueSchema = z.strictObject({
+  readyMs: z.number(),
+  fetchMs: z.number(),
+  status: z.number(),
+  headers: z.array(z.tuple([z.string(), z.string()])),
+  bodyBytes: z.number(),
+});

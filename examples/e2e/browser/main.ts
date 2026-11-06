@@ -309,6 +309,36 @@ async function handle(text: string): Promise<Json> {
       const body = z.object({ observed_ip: z.string(), attribution: z.string() }).parse(await response.json());
       return { observedIp: body.observed_ip, attribution: body.attribution };
     }
+    case "transportProbe": {
+      const readyStart = performance.now();
+      const transport =
+        request.transport === "anon"
+          ? await createAnonTransport({
+              readyTimeoutMs: request.readyTimeoutMs,
+              ...(request.bootstrapRpcUrl === undefined ? {} : { bootstrapRpcUrl: request.bootstrapRpcUrl }),
+              onLog: (line) => {
+                if (line.level !== "debug") progress(`transport: ${line.text}`);
+              },
+            })
+          : directTransport();
+      const readyMs = performance.now() - readyStart;
+      try {
+        const fetchStart = performance.now();
+        const text = JSON.stringify({ pad: "a".repeat(request.bodyBytes) });
+        const requestBody = request.bodyKind === "text" ? text : new Blob([text]).stream();
+        const init =
+          request.method === "GET"
+            ? { method: request.method }
+            : { method: request.method, headers: { "content-type": "application/json" }, body: requestBody };
+        const response = await transport.fetch(request.url, init, { isolationKey: request.isolationKey });
+        const body = await response.arrayBuffer();
+        const headers: [string, string][] = [];
+        response.headers.forEach((value, name) => headers.push([name, value]));
+        return { readyMs, fetchMs: performance.now() - fetchStart, status: response.status, headers, bodyBytes: body.byteLength };
+      } finally {
+        transport.close();
+      }
+    }
     case "close": {
       const page = requireState();
       page.transport.close();
