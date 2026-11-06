@@ -6,7 +6,7 @@ import { z } from "zod";
 export type TransportKind = "anon" | "direct";
 
 export interface TransportRequestInit {
-  readonly method: "GET" | "POST";
+  readonly method: "GET" | "POST" | "PUT";
   readonly headers?: Readonly<Record<string, string>>;
   // JSON text. The SDK keeps the exact bytes of signed values inside the JSON envelope.
   // A stream body is also accepted (the harness transfers it to the worker as a stream).
@@ -27,6 +27,9 @@ export interface TransportLogEntry {
 
 export interface Transport {
   readonly kind: TransportKind;
+  // Largest request body that the transport can carry, in bytes. The SDK splits a larger
+  // open request into chunks (PUT /v1/open/chunks). Nox: 40,000. Direct: Infinity.
+  readonly maxBodyBytes: number;
   // Send one request. Fail on a transport failure. Never fall back to another transport.
   readonly fetch: (url: string, init: TransportRequestInit, options: TransportFetchOptions) => Promise<Response>;
   // Close the worker. Later requests fail with the code "closed".

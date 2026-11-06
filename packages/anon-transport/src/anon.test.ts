@@ -5,10 +5,11 @@ import { describe, expect, it } from "vitest";
 import { createAnonTransport, type HarnessFactory, type HarnessWorker } from "./anon.ts";
 import { directTransport } from "./direct.ts";
 import { TransportError, explainTransportError } from "./errors.ts";
-import { NOX_SPECIFIER } from "./workers.ts";
+import { NOX_MAX_REQUEST_BODY_BYTES, NOX_MEASURED_MAX_BODY_BYTES, NOX_SPECIFIER } from "./workers.ts";
 
 interface SentCall {
   readonly url: string;
+  readonly method: string | undefined;
   readonly isolationKey: string | undefined;
   readonly body: string | undefined;
 }
@@ -40,6 +41,7 @@ function fakeFactory(sent: SentCall[], state: { closed: boolean; address: string
         if (options.fail !== undefined) throw options.fail;
         sent.push({
           url: input,
+          method: requestInit.method,
           isolationKey: requestInit.anonOptions?.isolationKey,
           body: typeof requestInit.body === "string" ? requestInit.body : undefined,
         });
@@ -67,6 +69,8 @@ describe("createAnonTransport", () => {
       createWorker: fakeFactory(sent, state, { logs: [{ level: "info", args: ["nox-worker", "ready", 3] }] }),
     });
     expect(transport.kind).toBe("anon");
+    expect(transport.maxBodyBytes).toBe(NOX_MAX_REQUEST_BODY_BYTES);
+    expect(NOX_MAX_REQUEST_BODY_BYTES).toBeLessThan(NOX_MEASURED_MAX_BODY_BYTES);
     expect(state.address).toBe(NOX_SPECIFIER);
     expect(methods).toEqual(["eth_chainId"]);
 
@@ -79,7 +83,9 @@ describe("createAnonTransport", () => {
     expect(response.headers.get("x-anon-remaining")).toBe("99");
     await transport.fetch("https://gateway.example/v1/rpc", { method: "POST", body: "{}" }, { isolationKey: "batch-b" });
     await transport.fetch("https://gateway.example/v1/rpc", { method: "POST", body: "{}" }, { isolationKey: "batch-a" });
-    expect(sent.map((call) => call.isolationKey)).toEqual(["batch-a", "batch-b", "batch-a"]);
+    await transport.fetch("https://gateway.example/v1/open/chunks", { method: "PUT", body: "{}" }, { isolationKey: "batch-a" });
+    expect(sent.map((call) => call.isolationKey)).toEqual(["batch-a", "batch-b", "batch-a", "batch-a"]);
+    expect(sent.at(-1)?.method).toBe("PUT");
     expect(transport.isolationKeys()).toEqual(["batch-a", "batch-b"]);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(transport.logs.some((line) => line.text.includes("nox-worker ready 3"))).toBe(true);
@@ -181,6 +187,8 @@ describe("directTransport", () => {
       },
     });
     expect(transport.kind).toBe("direct");
+    expect(transport.maxBodyBytes).toBe(Number.POSITIVE_INFINITY);
+    expect(directTransport({ maxBodyBytes: 1000 }).maxBodyBytes).toBe(1000);
     await transport.fetch("http://127.0.0.1:1/v1/config", { method: "GET" }, { isolationKey: "registry" });
     expect(seen[0]?.credentials).toBe("omit");
     expect(transport.isolationKeys()).toEqual(["registry"]);

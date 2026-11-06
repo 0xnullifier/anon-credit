@@ -39,3 +39,7 @@ export const BOOTSTRAP_RPC_URLS: Readonly<Record<number, string>> = {
 // a stream body. An open request with a ProveKit proof is about 640 KB, so it does not pass.
 // Spend and status requests (about 1 KB) pass. This is a measurement, not a protocol limit.
 export const NOX_MEASURED_MAX_BODY_BYTES = 48_000;
+
+// Largest request body that the SDK sends through Nox: the measured limit with a margin.
+// The gateway chunk body limit (OPEN_CHUNK_BODY_LIMIT_BYTES) has the same value.
+export const NOX_MAX_REQUEST_BODY_BYTES = 40_000;

@@ -8,6 +8,8 @@ import { isolationKeySchema, keyRecorder, pushLog, type Transport, type Transpor
 export interface DirectTransportOptions {
   // Fetch function. Default: globalThis.fetch.
   readonly fetch?: typeof fetch;
+  // Largest request body. Default: Infinity (no limit).
+  readonly maxBodyBytes?: number;
 }
 
 export function directTransport(options: DirectTransportOptions = {}): Transport {
@@ -19,6 +21,7 @@ export function directTransport(options: DirectTransportOptions = {}): Transport
   pushLog(logs, { atMs: 0, level: "warn", text: "direct transport: requests are NOT anonymized" });
   return {
     kind: "direct",
+    maxBodyBytes: options.maxBodyBytes ?? Number.POSITIVE_INFINITY,
     logs,
     isolationKeys: keys.keys,
     close: () => {

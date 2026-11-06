@@ -15,7 +15,7 @@ import { z } from "zod";
 import { bootstrapChainId, makeBootstrapProvider, type BootstrapProvider } from "./bootstrap.ts";
 import { TransportError, explainTransportError } from "./errors.ts";
 import { isolationKeySchema, keyRecorder, pushLog, type Transport, type TransportLogEntry } from "./transport.ts";
-import { BOOTSTRAP_RPC_URLS, DEFAULT_WORKER, WORKERS, workerIdSchema, type WorkerId } from "./workers.ts";
+import { BOOTSTRAP_RPC_URLS, DEFAULT_WORKER, NOX_MAX_REQUEST_BODY_BYTES, WORKERS, workerIdSchema, type WorkerId } from "./workers.ts";
 
 // The part of AnonRpcWorker that the transport uses. Tests give a fake.
 export interface HarnessWorker {
@@ -142,6 +142,7 @@ export async function createAnonTransport(options: AnonTransportOptions = {}): P
   const keys = keyRecorder();
   return {
     kind: "anon",
+    maxBodyBytes: NOX_MAX_REQUEST_BODY_BYTES,
     logs,
     isolationKeys: keys.keys,
     close: () => {
