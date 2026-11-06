@@ -20,6 +20,8 @@ export const errorCodeSchema = z.enum([
   "upstream_failed",
   "storage_unavailable",
   "busy",
+  "not_found",
+  "payment_invalid",
 ]);
 
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
@@ -49,6 +51,8 @@ export function isRetryable(code: ErrorCode): boolean {
     case "insufficient_units":
     case "session_expired":
     case "method_not_allowed":
+    case "not_found":
+    case "payment_invalid":
       return false;
   }
 }

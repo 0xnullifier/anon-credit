@@ -64,6 +64,14 @@
     {
       "code": "busy",
       "retryable": true
+    },
+    {
+      "code": "not_found",
+      "retryable": false
+    },
+    {
+      "code": "payment_invalid",
+      "retryable": false
     }
   ]
 }

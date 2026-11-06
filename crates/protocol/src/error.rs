@@ -40,11 +40,16 @@ pub enum ErrorCode {
     StorageUnavailable,
     /// The gateway is at a concurrency limit.
     Busy,
+    /// The requested record does not exist (for example an untracked payment or a root that
+    /// the issuer does not keep).
+    NotFound,
+    /// The referenced chain log is not a valid purchase. The issuer will never issue it.
+    PaymentInvalid,
 }
 
 impl ErrorCode {
     /// All error codes, in declaration order.
-    pub const ALL: [ErrorCode; 16] = [
+    pub const ALL: [ErrorCode; 18] = [
         ErrorCode::InvalidRequest,
         ErrorCode::UnsupportedVersion,
         ErrorCode::ProofInvalid,
@@ -61,6 +66,8 @@ impl ErrorCode {
         ErrorCode::UpstreamFailed,
         ErrorCode::StorageUnavailable,
         ErrorCode::Busy,
+        ErrorCode::NotFound,
+        ErrorCode::PaymentInvalid,
     ];
 
     /// Wire name of the code.
@@ -82,6 +89,8 @@ impl ErrorCode {
             ErrorCode::UpstreamFailed => "upstream_failed",
             ErrorCode::StorageUnavailable => "storage_unavailable",
             ErrorCode::Busy => "busy",
+            ErrorCode::NotFound => "not_found",
+            ErrorCode::PaymentInvalid => "payment_invalid",
         }
     }
 
@@ -104,7 +113,9 @@ impl ErrorCode {
             | ErrorCode::ResponseExpired
             | ErrorCode::InsufficientUnits
             | ErrorCode::SessionExpired
-            | ErrorCode::MethodNotAllowed => false,
+            | ErrorCode::MethodNotAllowed
+            | ErrorCode::NotFound
+            | ErrorCode::PaymentInvalid => false,
         }
     }
 }
