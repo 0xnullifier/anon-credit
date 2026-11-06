@@ -1,0 +1,51 @@
+# Rust build output
+target/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+out/
+cache/
+
+# Noir
+circuits/**/target/
+
+# Generated proof artifacts and large binaries
+artifacts/**
+!artifacts/.gitkeep
+!artifacts/README.md
+*.wasm
+*.pkp
+*.pkv
+*.bin
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+!config/*.env.example
+*.key
+*.pem
+
+# Example run output
+examples/e2e/results/
+playwright-report/
+test-results/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
