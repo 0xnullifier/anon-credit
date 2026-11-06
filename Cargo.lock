@@ -738,6 +738,7 @@ name = "anon-credit-protocol"
 version = "0.1.0"
 dependencies = [
  "anon-credit-crypto",
+ "base64 0.22.1",
  "hex",
  "serde",
  "serde_json",
