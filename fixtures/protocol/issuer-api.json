@@ -1,0 +1,617 @@
+{
+  "description": "Shared examples of the issuer API JSON envelopes (crates/protocol/src/issuer_api.rs, packages/protocol/src/issuer-api.ts). The issuer service made the valid examples on a mock chain (crates/issuer/tests/issuer_fixtures.rs). Each valid example must parse and serialize back to the same JSON value. Each invalid example must fail to parse as its type. tree_path_response must verify against its root.",
+  "invalid": [
+    {
+      "name": "unknown_field",
+      "type": "topup_request",
+      "value": {
+        "commitments": [],
+        "log_index": 2,
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "uppercase_hex",
+      "type": "topup_request",
+      "value": {
+        "log_index": 2,
+        "tx_hash": "0xF685B518CD1524B740DC65B1FF05DC74A3A189BC93F0292F843F90B965641B85"
+      }
+    },
+    {
+      "name": "negative_log_index",
+      "type": "topup_request",
+      "value": {
+        "log_index": -1,
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "string_log_index",
+      "type": "topup_request",
+      "value": {
+        "log_index": "2",
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "missing_log_index",
+      "type": "topup_request",
+      "value": {
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "unknown_status",
+      "type": "topup_response",
+      "value": {
+        "block_number": "20",
+        "chain_id": 11155111,
+        "finalized_block": "20",
+        "issuance": {
+          "amount_wei": "300000000000000",
+          "block_number": "20",
+          "eligible_epoch": "1001",
+          "expiry": "36040",
+          "insertion_epoch": "1000",
+          "leaves": [
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4241",
+              "leaf": "0x060af8c76920b3a9fbd8607cfbcfbce04f2eb3e924c310add91bc680d2853343",
+              "leaf_index": 0
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4242",
+              "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+              "leaf_index": 1
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4243",
+              "leaf": "0x0d9b8f25ced72cfc68a606ad68122696b1022f7b1e43e1a05fa200bc01a1647b",
+              "leaf_index": 2
+            }
+          ],
+          "payer": "0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+          "purchase_id": "0"
+        },
+        "log_index": 2,
+        "pending_reason": null,
+        "reject_reason": null,
+        "status": "minted",
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "missing_null_field",
+      "type": "topup_response",
+      "value": {
+        "block_number": "20",
+        "chain_id": 11155111,
+        "finalized_block": "20",
+        "issuance": {
+          "amount_wei": "300000000000000",
+          "block_number": "20",
+          "eligible_epoch": "1001",
+          "expiry": "36040",
+          "insertion_epoch": "1000",
+          "leaves": [
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4241",
+              "leaf": "0x060af8c76920b3a9fbd8607cfbcfbce04f2eb3e924c310add91bc680d2853343",
+              "leaf_index": 0
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4242",
+              "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+              "leaf_index": 1
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4243",
+              "leaf": "0x0d9b8f25ced72cfc68a606ad68122696b1022f7b1e43e1a05fa200bc01a1647b",
+              "leaf_index": 2
+            }
+          ],
+          "payer": "0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+          "purchase_id": "0"
+        },
+        "log_index": 2,
+        "reject_reason": null,
+        "status": "issued",
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "epoch_as_number",
+      "type": "topup_response",
+      "value": {
+        "block_number": "20",
+        "chain_id": 11155111,
+        "finalized_block": "20",
+        "issuance": {
+          "amount_wei": "300000000000000",
+          "block_number": "20",
+          "eligible_epoch": "1001",
+          "expiry": 36040,
+          "insertion_epoch": "1000",
+          "leaves": [
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4241",
+              "leaf": "0x060af8c76920b3a9fbd8607cfbcfbce04f2eb3e924c310add91bc680d2853343",
+              "leaf_index": 0
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4242",
+              "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+              "leaf_index": 1
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4243",
+              "leaf": "0x0d9b8f25ced72cfc68a606ad68122696b1022f7b1e43e1a05fa200bc01a1647b",
+              "leaf_index": 2
+            }
+          ],
+          "payer": "0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+          "purchase_id": "0"
+        },
+        "log_index": 2,
+        "pending_reason": null,
+        "reject_reason": null,
+        "status": "issued",
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "leading_zero_epoch",
+      "type": "topup_response",
+      "value": {
+        "block_number": "20",
+        "chain_id": 11155111,
+        "finalized_block": "20",
+        "issuance": {
+          "amount_wei": "300000000000000",
+          "block_number": "20",
+          "eligible_epoch": "1001",
+          "expiry": "036040",
+          "insertion_epoch": "1000",
+          "leaves": [
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4241",
+              "leaf": "0x060af8c76920b3a9fbd8607cfbcfbce04f2eb3e924c310add91bc680d2853343",
+              "leaf_index": 0
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4242",
+              "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+              "leaf_index": 1
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4243",
+              "leaf": "0x0d9b8f25ced72cfc68a606ad68122696b1022f7b1e43e1a05fa200bc01a1647b",
+              "leaf_index": 2
+            }
+          ],
+          "payer": "0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+          "purchase_id": "0"
+        },
+        "log_index": 2,
+        "pending_reason": null,
+        "reject_reason": null,
+        "status": "issued",
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "commitment_not_in_field",
+      "type": "topup_response",
+      "value": {
+        "block_number": "20",
+        "chain_id": 11155111,
+        "finalized_block": "20",
+        "issuance": {
+          "amount_wei": "300000000000000",
+          "block_number": "20",
+          "eligible_epoch": "1001",
+          "expiry": "36040",
+          "insertion_epoch": "1000",
+          "leaves": [
+            {
+              "commitment": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+              "leaf": "0x060af8c76920b3a9fbd8607cfbcfbce04f2eb3e924c310add91bc680d2853343",
+              "leaf_index": 0
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4242",
+              "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+              "leaf_index": 1
+            },
+            {
+              "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4243",
+              "leaf": "0x0d9b8f25ced72cfc68a606ad68122696b1022f7b1e43e1a05fa200bc01a1647b",
+              "leaf_index": 2
+            }
+          ],
+          "payer": "0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+          "purchase_id": "0"
+        },
+        "log_index": 2,
+        "pending_reason": null,
+        "reject_reason": null,
+        "status": "issued",
+        "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+      }
+    },
+    {
+      "name": "root_not_in_field",
+      "type": "tree_path_response",
+      "value": {
+        "epoch": "1000",
+        "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+        "proof": {
+          "leaf_count": 3,
+          "leaf_index": 1,
+          "peak_position": 0,
+          "peaks": [
+            "0x17c717e7a4780d0121cf54d8975c046a9e98605955435ae4d6d9520a35e1388e",
+            "0x0fa90db4bd165635b68d169d96b88045f4420b0875cdef77726a1eff9544245c"
+          ],
+          "siblings": [
+            "0x1fe306050418dfefbfc12ba94a5f6de3895489330c7bcfe1645ac4c3913c8049"
+          ]
+        },
+        "root": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
+      }
+    },
+    {
+      "name": "proof_unknown_field",
+      "type": "tree_path_response",
+      "value": {
+        "epoch": "1000",
+        "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+        "proof": {
+          "height": 1,
+          "leaf_count": 3,
+          "leaf_index": 1,
+          "peak_position": 0,
+          "peaks": [
+            "0x17c717e7a4780d0121cf54d8975c046a9e98605955435ae4d6d9520a35e1388e",
+            "0x0fa90db4bd165635b68d169d96b88045f4420b0875cdef77726a1eff9544245c"
+          ],
+          "siblings": [
+            "0x1fe306050418dfefbfc12ba94a5f6de3895489330c7bcfe1645ac4c3913c8049"
+          ]
+        },
+        "root": "0x1064191f423ef3fcf0dc67ae2b86a044fce09d1aa723df1c190a7d8cc8a9f469"
+      }
+    },
+    {
+      "name": "short_sibling",
+      "type": "tree_path_response",
+      "value": {
+        "epoch": "1000",
+        "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+        "proof": {
+          "leaf_count": 3,
+          "leaf_index": 1,
+          "peak_position": 0,
+          "peaks": [
+            "0x17c717e7a4780d0121cf54d8975c046a9e98605955435ae4d6d9520a35e1388e",
+            "0x0fa90db4bd165635b68d169d96b88045f4420b0875cdef77726a1eff9544245c"
+          ],
+          "siblings": [
+            "0x01"
+          ]
+        },
+        "root": "0x1064191f423ef3fcf0dc67ae2b86a044fce09d1aa723df1c190a7d8cc8a9f469"
+      }
+    },
+    {
+      "name": "price_leading_zero",
+      "type": "config_response",
+      "value": {
+        "batch_price_wei": "0100000000000000",
+        "deployment": {
+          "batch_size": 100,
+          "circuit_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "credit_lifetime_epochs": 35040,
+          "epoch_seconds": 30,
+          "gateway_id": "0x6161616161616161616161616161616161616161616161616161616161616161",
+          "issuer_address": "0x1515151515151515151515151515151515151515",
+          "payment_chain_id": 11155111,
+          "protocol_version": 1,
+          "prover_manifest_hash": "0x0303030303030303030303030303030303030303030303030303030303030303",
+          "root_registry_address": "0x7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e",
+          "sale_address": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "verifier_artifact_hash": "0x0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        "deployment_id": "0x5dd3e216f06bb3cfe7bdbd0265ae10c8da3fc7dfd0c1773fbff9f98950db8368",
+        "max_batches_per_purchase": 100,
+        "root_window_epochs": 96
+      }
+    },
+    {
+      "name": "chain_id_as_string",
+      "type": "config_response",
+      "value": {
+        "batch_price_wei": "100000000000000",
+        "deployment": {
+          "batch_size": 100,
+          "circuit_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "credit_lifetime_epochs": 35040,
+          "epoch_seconds": 30,
+          "gateway_id": "0x6161616161616161616161616161616161616161616161616161616161616161",
+          "issuer_address": "0x1515151515151515151515151515151515151515",
+          "payment_chain_id": "11155111",
+          "protocol_version": 1,
+          "prover_manifest_hash": "0x0303030303030303030303030303030303030303030303030303030303030303",
+          "root_registry_address": "0x7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e",
+          "sale_address": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "verifier_artifact_hash": "0x0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        "deployment_id": "0x5dd3e216f06bb3cfe7bdbd0265ae10c8da3fc7dfd0c1773fbff9f98950db8368",
+        "max_batches_per_purchase": 100,
+        "root_window_epochs": 96
+      }
+    },
+    {
+      "name": "epoch_as_number",
+      "type": "epoch_response",
+      "value": {
+        "epoch": 1001,
+        "epoch_seconds": 30,
+        "now": "30037",
+        "seconds_until_next": 23
+      }
+    },
+    {
+      "name": "index_as_string",
+      "type": "leaf_events_response",
+      "value": {
+        "events": [
+          {
+            "index": "0",
+            "leaf": "0x060af8c76920b3a9fbd8607cfbcfbce04f2eb3e924c310add91bc680d2853343"
+          },
+          {
+            "index": 1,
+            "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee"
+          },
+          {
+            "index": 2,
+            "leaf": "0x0d9b8f25ced72cfc68a606ad68122696b1022f7b1e43e1a05fa200bc01a1647b"
+          }
+        ],
+        "leaf_count": 3
+      }
+    },
+    {
+      "name": "unknown_publication_status",
+      "type": "roots_response",
+      "value": {
+        "current_epoch": "1001",
+        "finalized_block": "20",
+        "roots": [
+          {
+            "block_number": "5",
+            "epoch": "999",
+            "leaf_count": 0,
+            "root": "0x1a5481783b9c2ce662d4e90e2156572e5c38ca40dee233ed2589dc6cda1f69af",
+            "status": "mined",
+            "tx_hash": "0xc4ff122d4c4770d8d8d486cd2fd3897afc68fcae54efd010cf1bcb882a822380"
+          },
+          {
+            "block_number": "22",
+            "epoch": "1000",
+            "leaf_count": 3,
+            "root": "0x1064191f423ef3fcf0dc67ae2b86a044fce09d1aa723df1c190a7d8cc8a9f469",
+            "status": "included",
+            "tx_hash": "0xac88cfca770654fc5b34e1c23d857de174cd1c9d97dd961c4a17b1c5b57b3ac5"
+          }
+        ]
+      }
+    },
+    {
+      "name": "finalized_as_string",
+      "type": "root_events_response",
+      "value": {
+        "events": [
+          {
+            "block_number": "5",
+            "finalized": "true",
+            "index": "999",
+            "leaf_count": 0,
+            "root": "0x1a5481783b9c2ce662d4e90e2156572e5c38ca40dee233ed2589dc6cda1f69af",
+            "tx_hash": "0xc4ff122d4c4770d8d8d486cd2fd3897afc68fcae54efd010cf1bcb882a822380"
+          },
+          {
+            "block_number": "22",
+            "finalized": false,
+            "index": "1000",
+            "leaf_count": 3,
+            "root": "0x1064191f423ef3fcf0dc67ae2b86a044fce09d1aa723df1c190a7d8cc8a9f469",
+            "tx_hash": "0xac88cfca770654fc5b34e1c23d857de174cd1c9d97dd961c4a17b1c5b57b3ac5"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown_code",
+      "type": "error_body",
+      "value": {
+        "code": "missing",
+        "message": "the root is not a kept snapshot, or the leaf is not in it",
+        "retryable": false
+      }
+    }
+  ],
+  "valid": {
+    "config_response": {
+      "batch_price_wei": "100000000000000",
+      "deployment": {
+        "batch_size": 100,
+        "circuit_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+        "credit_lifetime_epochs": 35040,
+        "epoch_seconds": 30,
+        "gateway_id": "0x6161616161616161616161616161616161616161616161616161616161616161",
+        "issuer_address": "0x1515151515151515151515151515151515151515",
+        "payment_chain_id": 11155111,
+        "protocol_version": 1,
+        "prover_manifest_hash": "0x0303030303030303030303030303030303030303030303030303030303030303",
+        "root_registry_address": "0x7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e",
+        "sale_address": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "verifier_artifact_hash": "0x0202020202020202020202020202020202020202020202020202020202020202"
+      },
+      "deployment_id": "0x5dd3e216f06bb3cfe7bdbd0265ae10c8da3fc7dfd0c1773fbff9f98950db8368",
+      "max_batches_per_purchase": 100,
+      "root_window_epochs": 96
+    },
+    "epoch_response": {
+      "epoch": "1001",
+      "epoch_seconds": 30,
+      "now": "30037",
+      "seconds_until_next": 23
+    },
+    "error_body": {
+      "code": "not_found",
+      "message": "the root is not a kept snapshot, or the leaf is not in it",
+      "retryable": false
+    },
+    "leaf_events_response": {
+      "events": [
+        {
+          "index": 0,
+          "leaf": "0x060af8c76920b3a9fbd8607cfbcfbce04f2eb3e924c310add91bc680d2853343"
+        },
+        {
+          "index": 1,
+          "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee"
+        },
+        {
+          "index": 2,
+          "leaf": "0x0d9b8f25ced72cfc68a606ad68122696b1022f7b1e43e1a05fa200bc01a1647b"
+        }
+      ],
+      "leaf_count": 3
+    },
+    "root_events_response": {
+      "events": [
+        {
+          "block_number": "5",
+          "finalized": true,
+          "index": "999",
+          "leaf_count": 0,
+          "root": "0x1a5481783b9c2ce662d4e90e2156572e5c38ca40dee233ed2589dc6cda1f69af",
+          "tx_hash": "0xc4ff122d4c4770d8d8d486cd2fd3897afc68fcae54efd010cf1bcb882a822380"
+        },
+        {
+          "block_number": "22",
+          "finalized": false,
+          "index": "1000",
+          "leaf_count": 3,
+          "root": "0x1064191f423ef3fcf0dc67ae2b86a044fce09d1aa723df1c190a7d8cc8a9f469",
+          "tx_hash": "0xac88cfca770654fc5b34e1c23d857de174cd1c9d97dd961c4a17b1c5b57b3ac5"
+        }
+      ]
+    },
+    "roots_response": {
+      "current_epoch": "1001",
+      "finalized_block": "20",
+      "roots": [
+        {
+          "block_number": "5",
+          "epoch": "999",
+          "leaf_count": 0,
+          "root": "0x1a5481783b9c2ce662d4e90e2156572e5c38ca40dee233ed2589dc6cda1f69af",
+          "status": "finalized",
+          "tx_hash": "0xc4ff122d4c4770d8d8d486cd2fd3897afc68fcae54efd010cf1bcb882a822380"
+        },
+        {
+          "block_number": "22",
+          "epoch": "1000",
+          "leaf_count": 3,
+          "root": "0x1064191f423ef3fcf0dc67ae2b86a044fce09d1aa723df1c190a7d8cc8a9f469",
+          "status": "included",
+          "tx_hash": "0xac88cfca770654fc5b34e1c23d857de174cd1c9d97dd961c4a17b1c5b57b3ac5"
+        }
+      ]
+    },
+    "topup_request": {
+      "log_index": 2,
+      "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+    },
+    "topup_response_issued": {
+      "block_number": "20",
+      "chain_id": 11155111,
+      "finalized_block": "20",
+      "issuance": {
+        "amount_wei": "300000000000000",
+        "block_number": "20",
+        "eligible_epoch": "1001",
+        "expiry": "36040",
+        "insertion_epoch": "1000",
+        "leaves": [
+          {
+            "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4241",
+            "leaf": "0x060af8c76920b3a9fbd8607cfbcfbce04f2eb3e924c310add91bc680d2853343",
+            "leaf_index": 0
+          },
+          {
+            "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4242",
+            "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+            "leaf_index": 1
+          },
+          {
+            "commitment": "0x00000000000000000000000000000000000000000000000000000000000f4243",
+            "leaf": "0x0d9b8f25ced72cfc68a606ad68122696b1022f7b1e43e1a05fa200bc01a1647b",
+            "leaf_index": 2
+          }
+        ],
+        "payer": "0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+        "purchase_id": "0"
+      },
+      "log_index": 2,
+      "pending_reason": null,
+      "reject_reason": null,
+      "status": "issued",
+      "tx_hash": "0xf685b518cd1524b740dc65b1ff05dc74a3a189bc93f0292f843f90b965641b85"
+    },
+    "topup_response_pending": {
+      "block_number": "21",
+      "chain_id": 11155111,
+      "finalized_block": "20",
+      "issuance": null,
+      "log_index": 0,
+      "pending_reason": "awaiting_finality",
+      "reject_reason": null,
+      "status": "pending",
+      "tx_hash": "0x0d2b4d837a87d9353e98a807e4024edeb44530c05f8c52187bc65974b751ac14"
+    },
+    "topup_response_rejected": {
+      "block_number": "19",
+      "chain_id": 11155111,
+      "finalized_block": "20",
+      "issuance": null,
+      "log_index": 0,
+      "pending_reason": null,
+      "reject_reason": "not_a_purchase",
+      "status": "rejected",
+      "tx_hash": "0xce83c74ee325f0327142fcc52ad5374cc998cfc274ed3297a01315747e9b2d2a"
+    },
+    "tree_path_response": {
+      "epoch": "1000",
+      "leaf": "0x1d4e09149f6fe40cc1128273f953939802e0422b898523cb9ceed8b8e1e966ee",
+      "proof": {
+        "leaf_count": 3,
+        "leaf_index": 1,
+        "peak_position": 0,
+        "peaks": [
+          "0x17c717e7a4780d0121cf54d8975c046a9e98605955435ae4d6d9520a35e1388e",
+          "0x0fa90db4bd165635b68d169d96b88045f4420b0875cdef77726a1eff9544245c"
+        ],
+        "siblings": [
+          "0x1fe306050418dfefbfc12ba94a5f6de3895489330c7bcfe1645ac4c3913c8049"
+        ]
+      },
+      "root": "0x1064191f423ef3fcf0dc67ae2b86a044fce09d1aa723df1c190a7d8cc8a9f469"
+    }
+  }
+}
