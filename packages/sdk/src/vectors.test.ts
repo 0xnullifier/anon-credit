@@ -25,6 +25,7 @@ import { prepareOpen, type OpenContext } from "./open.ts";
 import { expectedLeaf, verifyPath, type RegistryClient } from "./registry.ts";
 import { signSpend } from "./spend.ts";
 import type { BatchRecord, DeploymentRecord } from "./state.ts";
+import { DEFAULT_UPLOAD_POLICY } from "./upload.ts";
 import { memoryStorage, openEncryptedStore } from "./storage.ts";
 import { fakeProver, manualClock } from "./test-support/client.ts";
 
@@ -195,6 +196,7 @@ describe("open path against the gate witness and the public-input order contract
         prices: () => Promise.reject(new Error("not used")),
         roots: () => Promise.reject(new Error("not used")),
         open: () => Promise.reject(new Error("not used")),
+        openChunk: () => Promise.reject(new Error("not used")),
         spend: () => Promise.reject(new Error("not used")),
         status: () => Promise.reject(new Error("not used")),
       },
@@ -205,6 +207,9 @@ describe("open path against the gate witness and the public-input order contract
       priceTable: INITIAL_PRICE_TABLE,
       priceTableHash: encodeHex(priceTableHash(INITIAL_PRICE_TABLE)),
       pollMs: 1,
+      transport: { kind: "direct", maxBodyBytes: Number.POSITIVE_INFINITY },
+      openUpload: "auto",
+      uploadPolicy: { policy: DEFAULT_UPLOAD_POLICY },
     };
     const record: BatchRecord = {
       order: 0,

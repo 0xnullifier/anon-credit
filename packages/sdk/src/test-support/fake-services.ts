@@ -1,7 +1,7 @@
 // In-process fake gateway and issuer for SDK tests. The fake is a Transport, so the SDK code
 // under test is the real code. The fake checks the same signatures as the real gateway and
-// follows its sequence, replay, and expiry rules. Hooks inject lost responses, missing
-// headers, and transport failures.
+// follows its sequence, replay, expiry, and chunked upload rules. Hooks inject lost
+// responses, missing headers, transport failures, and chunk failures.
 
 import type { Transport, TransportLogEntry } from "@anon-credit/anon-transport";
 import { TransportError } from "@anon-credit/anon-transport";
@@ -13,7 +13,9 @@ import {
   decodeFixedHex,
   deploymentId,
   deploymentConfigSchema,
+  encodeBase64,
   encodeHex,
+  openChunkRequestSchema,
   openMessageDigest,
   openMessageFromRequest,
   openRequestSchema,
@@ -29,7 +31,7 @@ import {
   type SessionState,
 } from "@anon-credit/protocol";
 import { ed25519 } from "@noble/curves/ed25519.js";
-import { keccak_256 } from "@noble/hashes/sha3.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { z } from "zod";
 import { buildMmr, type TestMmr } from "./mmr.ts";
 
@@ -78,6 +80,19 @@ export interface FakeHooks {
   transportDown: boolean;
   // Reject proofs whose bytes are not the fake prover output.
   validProof: string;
+  // Throw a transport error for the next n chunk requests (nothing reaches the fake).
+  failChunks: number;
+  // Throw a transport error for a chunk request while another chunk request is in flight.
+  refuseParallelChunks: boolean;
+}
+
+export interface ChunkStats {
+  // Chunk requests that reached the fake.
+  received: number;
+  // Largest number of chunk requests in flight at the same time.
+  maxInFlight: number;
+  // Uploads that wait for an open request.
+  pendingUploads: () => number;
 }
 
 export interface FakeServices {
@@ -85,6 +100,7 @@ export interface FakeServices {
   readonly calls: CallRecord[];
   readonly hooks: FakeHooks;
   readonly sessions: Map<string, FakeSession>;
+  readonly chunkStats: ChunkStats;
   // Make the issuance of commitments: leaves, MMR, and one finalized root of `epoch`.
   readonly issue: (commitments: readonly bigint[], leafFor: (commitment: bigint) => bigint, epoch: bigint) => Issuance;
   // Drop the stored response bytes of all receipts (the 60 s retention passed).
@@ -108,7 +124,17 @@ const rpcSchema = z.object({ jsonrpc: z.literal("2.0"), id: z.number(), method: 
 
 export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
   const calls: CallRecord[] = [];
-  const hooks: FakeHooks = { dropResponses: 0, omitHeaders: false, transportDown: false, validProof: encodeBase64Text("proof") };
+  const hooks: FakeHooks = {
+    dropResponses: 0,
+    omitHeaders: false,
+    transportDown: false,
+    validProof: encodeBase64Text("proof"),
+    failChunks: 0,
+    refuseParallelChunks: false,
+  };
+  const uploads = new Map<string, { total: number; count: number; chunks: (Uint8Array | undefined)[]; complete: boolean }>();
+  let inFlight = 0;
+  const chunkStats: ChunkStats = { received: 0, maxInFlight: 0, pendingUploads: () => uploads.size };
   const sessions = new Map<string, FakeSession>();
   const keys: string[] = [];
   let currentEpoch = 1000n;
@@ -131,7 +157,50 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
       ? {}
       : { "x-anon-remaining": String(session.remaining), "x-anon-next-seq": session.next_seq, "x-anon-replayed": String(replayed) };
 
-  const gateway = (method: string, path: string, body: string | undefined): Response => {
+  // The proof bytes of an open request as base64: inline, or from the upload (decompressed).
+  // The upload is deleted in all cases. null: the upload is missing or not usable.
+  const proofOf = async (request: z.output<typeof openRequestSchema>): Promise<string | null> => {
+    if ("proof" in request) return request.proof;
+    const reference = request.proof_upload;
+    const key = `${request.batch_id}:${reference.proof_sha256}`;
+    const upload = uploads.get(key);
+    uploads.delete(key);
+    if (upload === undefined || !upload.complete || upload.total !== reference.total_bytes) return null;
+    const bytes = concat(upload.chunks);
+    switch (reference.proof_encoding) {
+      case "json+gzip": {
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+        return encodeBase64(new Uint8Array(await new Response(stream).arrayBuffer()));
+      }
+      case "json":
+      case "np":
+        return encodeBase64(bytes);
+    }
+  };
+
+  const putChunk = (body: string | undefined): Response => {
+    const chunk = openChunkRequestSchema.parse(JSON.parse(body ?? ""));
+    const key = `${chunk.batch_id}:${chunk.proof_sha256}`;
+    const upload = uploads.get(key) ?? { total: chunk.total_bytes, count: chunk.chunk_count, chunks: new Array<Uint8Array | undefined>(chunk.chunk_count).fill(undefined), complete: false };
+    uploads.set(key, upload);
+    if (upload.total !== chunk.total_bytes || upload.count !== chunk.chunk_count || chunk.chunk_index >= upload.count) return error(400, "invalid_request");
+    const data = decodeBase64(chunk.data);
+    const existing = upload.chunks[chunk.chunk_index];
+    if (existing !== undefined && encodeBase64(existing) !== chunk.data) return error(400, "invalid_request");
+    upload.chunks[chunk.chunk_index] = data;
+    const received = upload.chunks.filter((item) => item !== undefined).length;
+    if (received === upload.count && !upload.complete) {
+      const bytes = concat(upload.chunks);
+      if (bytes.byteLength !== upload.total || encodeHex(sha256(bytes)) !== chunk.proof_sha256) {
+        uploads.delete(key);
+        return error(400, "invalid_request");
+      }
+      upload.complete = true;
+    }
+    return json(200, { received_chunks: received, complete: upload.complete });
+  };
+
+  const gateway = async (method: string, path: string, body: string | undefined): Promise<Response> => {
     switch (`${method} ${path}`) {
       case "GET /v1/config":
         return json(200, {
@@ -158,6 +227,13 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
             proof_queue_depth: 8,
             response_retention_seconds: 60,
             batch_lock_wait_ms: 5000,
+            open_upload_max_bytes: 4_194_304,
+            open_upload_chunk_bytes: 24_576,
+            open_upload_chunk_body_bytes: 40_000,
+            open_upload_max_chunks: 256,
+            open_upload_ttl_seconds: 600,
+            open_upload_max_pending: 1000,
+            open_upload_max_pending_bytes: 536_870_912,
           },
           demo_peer_enabled: false,
         });
@@ -169,17 +245,22 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
           root_window_epochs: 96,
           roots: [...roots].reverse().map((root) => ({ source_epoch: root.epoch.toString(10), root: fieldToHex(root.root), leaf_count: root.leafCount })),
         });
+      case "PUT /v1/open/chunks":
+        return putChunk(body);
       case "POST /v1/open": {
         const request = openRequestSchema.parse(JSON.parse(body ?? ""));
-        if (!verify(request.signature, openMessageDigest(openMessageFromRequest(request)), request.session_pub)) {
+        const proof = await proofOf(request);
+        const messageDigest = openMessageDigest(openMessageFromRequest(request));
+        if (!verify(request.signature, messageDigest, request.session_pub)) {
           return error(401, "signature_invalid");
         }
-        const digest = encodeHex(keccak_256(new TextEncoder().encode(JSON.stringify({ ...request, proof: "" }))));
+        const digest = encodeHex(messageDigest);
         const existing = sessions.get(request.batch_id);
         if (existing !== undefined) {
           return existing.openDigest === digest ? json(200, { session: existing.state, existing: true }) : error(409, "session_conflict");
         }
-        if (request.proof !== hooks.validProof) return error(422, "proof_invalid");
+        if (proof === null) return error(400, "invalid_request");
+        if (proof !== hooks.validProof) return error(422, "proof_invalid");
         const state: SessionState = {
           batch_id: request.batch_id,
           session_pub: request.session_pub,
@@ -309,6 +390,7 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
 
   const transport: Transport = {
     kind,
+    maxBodyBytes: kind === "anon" ? 40_000 : Number.POSITIVE_INFINITY,
     logs,
     isolationKeys: () => [...keys],
     close: () => undefined,
@@ -318,6 +400,25 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
       const parsed = new URL(url);
       if (!keys.includes(options.isolationKey)) keys.push(options.isolationKey);
       calls.push({ method: init.method, path: parsed.pathname, isolationKey: options.isolationKey, body });
+      if (parsed.pathname === "/v1/open/chunks") {
+        if (body !== undefined && body.length > transport.maxBodyBytes) throw new TransportError("worker_error", "fake: the body is too large");
+        if (hooks.failChunks > 0) {
+          hooks.failChunks -= 1;
+          throw new TransportError("network_error", "fake: the chunk request failed");
+        }
+        if (hooks.refuseParallelChunks && inFlight > 0) throw new TransportError("network_error", "fake: parallel chunk refused");
+        inFlight += 1;
+        chunkStats.maxInFlight = Math.max(chunkStats.maxInFlight, inFlight);
+        try {
+          // Let other requests start, so that parallel requests overlap.
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          chunkStats.received += 1;
+          return await gateway(init.method, parsed.pathname, body);
+        } finally {
+          inFlight -= 1;
+        }
+      }
+      if (body !== undefined && body.length > transport.maxBodyBytes) throw new TransportError("worker_error", "fake: the body is too large");
       switch (parsed.origin) {
         case GATEWAY_URL:
           return gateway(init.method, parsed.pathname, body);
@@ -334,6 +435,7 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
     calls,
     hooks,
     sessions,
+    chunkStats,
     issue: (commitments, leafFor, epoch) => {
       const start = leaves.length;
       leaves = [...leaves, ...commitments.map(leafFor)];
@@ -367,4 +469,16 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
 
 function encodeBase64Text(text: string): string {
   return btoa(text);
+}
+
+function concat(parts: readonly (Uint8Array | undefined)[]): Uint8Array<ArrayBuffer> {
+  const total = parts.reduce((sum, part) => sum + (part?.byteLength ?? 0), 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    if (part === undefined) continue;
+    out.set(part, offset);
+    offset += part.byteLength;
+  }
+  return out;
 }

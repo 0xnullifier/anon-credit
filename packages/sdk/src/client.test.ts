@@ -62,7 +62,7 @@ describe("open and spend", () => {
     const prepared = await setup.client.prepareOpen(first);
     await setup.client.submitOpen(first, prepared.request);
     await (await setup.client.session(first)).rpc("eth_chainId", []);
-    const again = await setup.client.submitOpen(first, prepared.request);
+    const again = (await setup.client.submitOpen(first, prepared.request)).response;
     expect(again.existing).toBe(true);
     expect(again.session.remaining).toBe(99);
   });
@@ -76,7 +76,7 @@ describe("open and spend", () => {
       serviceCode: "proof_invalid",
     });
     await expect(setup.client.status(first)).rejects.toMatchObject({ serviceCode: "not_found" });
-    const opened = await setup.client.submitOpen(first, prepared.request);
+    const opened = (await setup.client.submitOpen(first, prepared.request)).response;
     expect(opened.session.remaining).toBe(100);
   });
 
