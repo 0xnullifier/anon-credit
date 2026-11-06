@@ -19,6 +19,18 @@ use crate::wire::DecimalU64;
 use anon_credit_crypto::FieldElement;
 use serde::{Deserialize, Serialize};
 
+/// Deserialize an `Option` field that must be present. `null` gives `None`.
+///
+/// Serde accepts a missing `Option` field as `None`. The wire rule is that a field without a
+/// value is `null` and never left out, so this function makes the field required.
+fn required<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
 /// Largest number of batches in one purchase. `CreditSale` has the same limit.
 pub const MAX_BATCHES_PER_PURCHASE: u32 = 100;
 
@@ -141,14 +153,19 @@ pub struct TopupResponse {
     /// Status of the payment.
     pub status: TopupStatus,
     /// Set only if `status` is `pending`.
+    #[serde(deserialize_with = "required")]
     pub pending_reason: Option<PendingReason>,
     /// Set only if `status` is `rejected`.
+    #[serde(deserialize_with = "required")]
     pub reject_reason: Option<RejectReason>,
     /// Block of the log, if the issuer knows it.
+    #[serde(deserialize_with = "required")]
     pub block_number: Option<DecimalU64>,
     /// The last finalized block that the issuer saw, if any.
+    #[serde(deserialize_with = "required")]
     pub finalized_block: Option<DecimalU64>,
     /// Set only if `status` is `issued`.
+    #[serde(deserialize_with = "required")]
     pub issuance: Option<Issuance>,
 }
 
@@ -183,8 +200,10 @@ pub struct IssuerRootRecord {
     /// Publication state.
     pub status: PublicationStatus,
     /// Hash of the `postRoot` transaction, if one is signed.
+    #[serde(deserialize_with = "required")]
     pub tx_hash: Option<Bytes32>,
     /// Block of the successful transaction, if it has a receipt.
+    #[serde(deserialize_with = "required")]
     pub block_number: Option<DecimalU64>,
 }
 
@@ -195,6 +214,7 @@ pub struct IssuerRootsResponse {
     /// Current epoch of the issuer clock.
     pub current_epoch: DecimalU64,
     /// The last finalized block that the issuer saw, if any.
+    #[serde(deserialize_with = "required")]
     pub finalized_block: Option<DecimalU64>,
     /// Publication records, in ascending epoch order.
     pub roots: Vec<IssuerRootRecord>,
@@ -306,6 +326,14 @@ mod tests {
         assert!(serde_json::from_str::<TopupRequest>(&upper).is_err());
         let negative = format!(r#"{{"tx_hash":"{hash}","log_index":-1}}"#);
         assert!(serde_json::from_str::<TopupRequest>(&negative).is_err());
+    }
+
+    #[test]
+    fn optional_fields_must_be_present() {
+        let json = r#"{"current_epoch":"5","roots":[]}"#;
+        assert!(serde_json::from_str::<IssuerRootsResponse>(json).is_err());
+        let json = r#"{"current_epoch":"5","finalized_block":null,"roots":[]}"#;
+        assert!(serde_json::from_str::<IssuerRootsResponse>(json).is_ok());
     }
 
     #[test]
