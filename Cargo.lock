@@ -700,7 +700,6 @@ dependencies = [
  "alloy",
  "anon-credit-crypto",
  "anon-credit-protocol",
- "anon-credit-prover",
  "anyhow",
  "axum",
  "base64 0.22.1",
@@ -744,14 +743,6 @@ dependencies = [
  "serde_json",
  "thiserror",
  "toml",
-]
-
-[[package]]
-name = "anon-credit-prover"
-version = "0.1.0"
-dependencies = [
- "anon-credit-protocol",
- "thiserror",
 ]
 
 [[package]]

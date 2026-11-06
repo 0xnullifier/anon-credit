@@ -13,7 +13,6 @@ workspace = true
 [dependencies]
 anon-credit-crypto.workspace = true
 anon-credit-protocol.workspace = true
-anon-credit-prover.workspace = true
 alloy.workspace = true
 anyhow.workspace = true
 axum.workspace = true

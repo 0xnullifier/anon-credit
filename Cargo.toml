@@ -4,10 +4,12 @@ members = [
     "crates/protocol",
     "crates/crypto",
     "crates/registry",
-    "crates/prover",
     "crates/issuer",
     "crates/gateway",
 ]
+# The ProveKit verifier adapter needs the nightly toolchain that ProveKit pins.
+# It is a separate workspace with its own rust-toolchain.toml and Cargo.lock.
+exclude = ["crates/prover"]
 
 [workspace.package]
 version = "0.1.0"
@@ -22,7 +24,6 @@ publish = false
 anon-credit-protocol = { path = "crates/protocol" }
 anon-credit-crypto = { path = "crates/crypto" }
 anon-credit-registry = { path = "crates/registry" }
-anon-credit-prover = { path = "crates/prover" }
 
 # Service stack
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }

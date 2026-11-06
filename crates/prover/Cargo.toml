@@ -1,15 +1,49 @@
 [package]
 name = "anon-credit-prover"
-description = "ProveKit verifier adapter and native benchmark command."
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-publish.workspace = true
+description = "ProveKit verifier adapter and native verify and bench command."
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
 
-[lints]
-workspace = true
+# A separate workspace. ProveKit needs the nightly toolchain in rust-toolchain.toml.
+# The root workspace uses stable Rust and excludes this crate.
+[workspace]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
 
 [dependencies]
-anon-credit-protocol.workspace = true
-thiserror.workspace = true
+# ProveKit, pinned to one commit. Keep the three revisions the same.
+# The whir revision is the one that this ProveKit commit pins in its Cargo.toml.
+provekit-common = { git = "https://github.com/worldfnd/provekit", rev = "201b7b639f5dd5632c01561fcb2a96c2fc8851f3" }
+provekit-backend-bn254 = { git = "https://github.com/worldfnd/provekit", rev = "201b7b639f5dd5632c01561fcb2a96c2fc8851f3", features = ["provekit_ntt"] }
+whir = { git = "https://github.com/worldfnd/whir.git", rev = "d2b16529d0a4fad4f53d088281e9062898d35f5b", default-features = false }
+ark-ff = "0.6"
+
+hex = "0.4.3"
+serde_json = "1.0"
+sha2 = "0.10.9"
+thiserror = "2.0.21"
+
+[[bin]]
+name = "anon-credit-prover"
+path = "src/main.rs"
+
+# ProveKit is slow without optimization. Optimize dependencies in debug and test builds.
+# Debug assertions must be off in the dependencies: with debug assertions, whir expects a
+# transcript pattern that only debug provers write, and it panics on release proofs.
+[profile.dev.package."*"]
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
