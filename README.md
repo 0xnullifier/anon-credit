@@ -13,7 +13,7 @@ Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not dele
 | Phase | Work | Status |
 |---|---|---|
 | 0. Workspace | Cargo and pnpm workspaces, package boundaries, configuration profiles, checks | Done |
-| 1. Proof feasibility | Pin ProveKit and Noir, batch-open circuit, hash encodings, artifacts | Not started |
+| 1. Proof feasibility | Pin ProveKit and Noir, batch-open circuit, hash encodings, artifacts | Done (1A gate, 1B statement, 1C real circuit in Chromium, verifier sidecar) |
 | 2. Credit issuance | Sepolia contracts, issuer indexing, MMR snapshots, root publication | Not started |
 | 3. Gateway | Open, spend, receipts, status recovery, pricing, limits | Not started |
 | 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Not started |
@@ -39,10 +39,11 @@ Phase 0 contents:
 | Node | 26.12.0 | Node 26 or later. Node runs `.ts` files directly (type stripping). |
 | pnpm | 12.18.0 | `npm install -g pnpm`. Corepack is not in Node 26, so `corepack enable pnpm` does not work. |
 | Foundry | forge 1.7.1 (`4072e48`) | `foundryup`. Installed at `~/.foundry/bin`, which is not on `PATH`. |
-| Noir | nargo 1.0.0-beta.12 (`9a5b369`) | `noirup`. Installed at `~/.nargo/bin`, which is not on `PATH`. |
+| Noir | nargo 1.0.0-beta.26 (`40d6574`), the version that ProveKit links | `tooling/provekit/install.sh`. Installed at `~/dev/noir-1.0.0-beta.26/bin`, which is not on `PATH`. `NARGO` overrides the path. The noirup nargo (`~/.nargo/bin`) is not used. |
 
-Phase 0 does not need Foundry or Noir to build. `check.sh` runs them if it finds them on
-`PATH` or at the default install locations.
+Phase 0 does not need Foundry or Noir to build. `check.sh` runs Foundry if it finds it on
+`PATH` or at the default install location. The circuit step needs nargo 1.0.0-beta.26: if it is
+missing, the step fails and tells you to run `tooling/provekit/install.sh`.
 
 Install the JavaScript dependencies:
 
@@ -59,7 +60,8 @@ Run all checks:
 
 ```sh
 ./check.sh            # or: pnpm check
-SKIP_OPTIONAL=1 ./check.sh   # skip Foundry and Noir
+SKIP_OPTIONAL=1 ./check.sh   # skip Foundry, Noir, and ProveKit
+PROVEKIT_GATE=1 ./check.sh   # also run both Chromium gates (sample and batch-open)
 ```
 
 `check.sh` runs these commands in order and stops at the first failure:
@@ -74,7 +76,9 @@ SKIP_OPTIONAL=1 ./check.sh   # skip Foundry and Noir
 | TypeScript tests | `pnpm -r test` (Vitest) |
 | Secret scan | Tracked configuration must have no secret values and no non-zero 32-byte hex values. |
 | Contracts (optional) | `forge test` in `contracts/` (in-process EVM, no local network) |
-| Circuit (optional) | `nargo test` in `circuits/batch-open/` |
+| Circuits | `nargo test` (1.0.0-beta.26) in `circuits/batch-open/` and `circuits/provekit-sample/` |
+| Prover (if the ProveKit toolchain is installed) | `cargo fmt --check`, `cargo clippy`, `cargo test` in `crates/prover/` |
+| Browser gates (`PROVEKIT_GATE=1`) | `node packages/prover/dev/gate.ts --circuit sample`, then `--circuit batch-open` |
 
 Other commands:
 
@@ -99,7 +103,7 @@ crates/
   protocol/             Wire structures, signing bytes, errors, configuration IDs, settings
   crypto/               Keccak-256, Ed25519 checks; Poseidon2 after phase 1
   registry/             MMR (phase 2)
-  prover/               ProveKit verifier adapter (phase 1)
+  prover/               ProveKit verifier adapter and loopback verifier sidecar (separate nightly workspace)
   issuer/               Issuer service (phase 2); binary `issuer`
   gateway/              Gateway service (phase 3); binary `gateway`
 
@@ -112,7 +116,7 @@ packages/
   dashboard/            @anon-credit/dashboard: React and Vite operator dashboard (phase 5)
 
 examples/e2e/           Sepolia end-to-end runner (phase 4): run.ts, browser/, fixtures/
-circuits/batch-open/    Noir circuit (placeholder until phase 1)
+circuits/batch-open/    Noir batch-open circuit (Noir 1.0.0-beta.26)
 contracts/              Foundry project: src/, test/, script/ (phase 2)
 config/                 Deployment template and environment profiles; no secrets
 fixtures/protocol/      Shared vectors for Rust and TypeScript
@@ -187,12 +191,13 @@ registry (`crates/registry`), the Rust helpers (`crates/crypto`), and the TypeSc
 
 `H(x_1, ..., x_n)` is Poseidon2 over the BN254 scalar field
 (`p = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001`). It is the same
-function as Noir `Poseidon2::hash(inputs, n)` (the standard library sponge, now in
-`noir-lang/poseidon`):
+function as Noir `Poseidon2::hash(inputs, n)` (in Noir 1.0.0-beta.26 the standard library sponge
+is private; the public copy is `noir-lang/poseidon` `v0.4.0`):
 
 - Permutation: `std::hash::poseidon2_permutation`, width 4, S-box `x^5`, 8 full rounds and
   56 partial rounds. The constants are in `fixtures/protocol/poseidon2-params.json`, copied from
-  the Noir ACVM solver at `v1.0.0-beta.12`.
+  the Noir ACVM solver at `v1.0.0-beta.12`. `v1.0.0-beta.26` has the same 260 values in the same
+  order. They are the standard BN254 set. Do not change them.
 - Sponge: state `[0, 0, 0, n * 2^64]`, rate 3, capacity 1. Absorb in order. When the cache has
   3 values and one more value comes, add the cache to state words 0..3 and permute. Squeeze:
   add the zero-padded cache, permute, return word 0. Thus `n` inputs use `max(1, ceil(n / 3))`
@@ -254,8 +259,8 @@ The deployment ID is in `c` and `batch_id`, so credit does not move between depl
 
 ### Circuit layout
 
-`circuits/batch-open/src/main.nr`. Public inputs, in order (also in
-`anon_credit_crypto::public_inputs` and `packages/crypto/src/public-inputs.ts`):
+`circuits/batch-open/src/main.nr`. Public inputs, in order. The order contract is
+`fixtures/protocol/batch-open-public-inputs.json` (see "Public-input order contract" below):
 
 | Index | Input |
 |---|---|
@@ -277,8 +282,14 @@ and each left/right decision come from those bits (this also proves `leaf_index 
 sibling padding and empty peak slots are zero; the path node equals `peaks[h]`; the root of
 `leaf_count` and `peaks` equals the public `root`.
 
-Size (`nargo info`, nargo 1.0.0-beta.12): 819 ACIR opcodes, with 52 Poseidon2 permutation calls
-and 75 range checks. ProveKit R1CS size is measured by the prover work.
+Size: 819 ACIR opcodes (`nargo info`, nargo 1.0.0-beta.26; the same as beta.12), with 52
+Poseidon2 permutation calls and 75 range checks. ProveKit R1CS: 14,416 constraints and 14,672
+witnesses after its Gaussian elimination (15,031 constraints and 19,866 witnesses before).
+`MAX_HEIGHT` and `MAX_PEAKS` stay 32.
+
+Noir 1.0.0-beta.26 port: `std::hash::poseidon2_permutation` takes only the state (the compiler
+checks the width), and `to_le_bits` returns `[bool; N]` (beta.26 removed `u1`). The 63 tests and
+their failure messages did not change.
 
 Witness helpers: `BatchOpenWitness::from_proof` and `BatchOpenWitness::from_mmr` in
 `crates/registry/src/witness.rs` (serde JSON and `to_prover_toml`), and
@@ -288,10 +299,10 @@ Witness helpers: `BatchOpenWitness::from_proof` and `BatchOpenWitness::from_mmr`
 ### Commands
 
 ```sh
-export PATH="$HOME/.nargo/bin:$PATH"
-(cd circuits/batch-open && nargo test)      # 63 tests: hash vectors, 7 valid witnesses, negative cases
-(cd circuits/batch-open && nargo execute)   # solves Prover.toml (tree of 7 leaves)
-(cd circuits/batch-open && nargo info)
+NARGO=~/dev/noir-1.0.0-beta.26/bin/nargo
+(cd circuits/batch-open && $NARGO test)     # 63 tests: hash vectors, 7 valid witnesses, negative cases
+(cd circuits/batch-open && $NARGO execute)  # solves Prover.toml (the gate witness: tree of 100 leaves, leaf 37)
+(cd circuits/batch-open && $NARGO info)
 cargo test -p anon-credit-crypto -p anon-credit-registry
 pnpm --filter @anon-credit/crypto test
 ```
@@ -307,17 +318,23 @@ node packages/crypto/scripts/generate-constants.ts       # domains.json, poseido
                                                           #   packages/crypto/src/constants.generated.ts,
                                                           #   circuits/batch-open/src/constants.nr,
                                                           #   fixtures/protocol/noir-vectors/src/constants.nr
-node packages/crypto/scripts/collect-noir-vectors.ts     # runs nargo in fixtures/protocol/noir-vectors ->
+node packages/crypto/scripts/collect-noir-vectors.ts     # runs nargo 1.0.0-beta.26 ($NARGO) in
+                                                          #   fixtures/protocol/noir-vectors ->
                                                           #   fixtures/protocol/poseidon2.json,
                                                           #   circuits/batch-open/src/hash_vectors.nr
 cargo run -p anon-credit-registry --example generate_fixtures
                                                           # -> fixtures/protocol/mmr.json, batch-open.json,
+                                                          #   batch-open-public-inputs.json,
                                                           #   circuits/batch-open/src/witness_vectors.nr,
-                                                          #   circuits/batch-open/Prover.toml
+                                                          #   circuits/batch-open/Prover.toml,
+                                                          #   artifacts/batch-open/gate-witness.json
 ```
 
-`fixtures/protocol/noir-vectors` depends on `noir-lang/poseidon` `v0.2.0` (git). The batch-open
-circuit has no dependencies. Do not run `nargo fmt` on the generated `.nr` files.
+`fixtures/protocol/noir-vectors` depends on `noir-lang/poseidon` `v0.4.0` (git; `v0.2.0` does not
+compile with beta.26). The `v0.4.0` sponge absorbs in the same order with the same number of
+permutations: all vectors in `poseidon2.json` are unchanged, and Rust and TypeScript still match
+bit for bit. The batch-open circuit has no dependencies and keeps its own sponge copy, because
+beta.26 does not export the standard library sponge. Do not run `nargo fmt` on the generated `.nr` files.
 
 New dependency versions (local to the crate manifests): ark-bn254 0.5.0 and ark-ff 0.5.0 in
 `anon-credit-crypto`, proptest 1.12.0 (dev) in `anon-credit-registry`, zod 4.6.7 in
