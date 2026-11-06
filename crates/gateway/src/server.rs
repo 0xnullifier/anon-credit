@@ -14,8 +14,8 @@ use crate::app::{
 use crate::clock::{Clock, SystemClock};
 use crate::epoch::window_start;
 use crate::peer::PeerPolicy;
-use crate::roots::{RegistryRootSource, RootTracker};
-use crate::settings::{GatewaySettings, MIN_ADMIN_TOKEN_LEN};
+use crate::roots::{IssuerHttpRootSource, RegistryRootSource, RootSource, RootTracker};
+use crate::settings::{GatewaySettings, MIN_ADMIN_TOKEN_LEN, RootSourceKind};
 use crate::store::Store;
 use crate::upstream::{HttpUpstream, Upstream, read_chain_id};
 use crate::verifier::{ProofVerifier, SidecarVerifier, check_verifier};
@@ -33,6 +33,9 @@ pub const RESPONSE_PRUNE_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Interval of the session and root cache pruning task.
 pub const SESSION_PRUNE_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Timeout of one issuer roots request (issuer-http root source).
+pub const ISSUER_ROOTS_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Timeout of one verifier sidecar call.
 pub const VERIFIER_TIMEOUT: Duration = Duration::from_secs(30);
@@ -68,10 +71,7 @@ pub async fn run(settings: GatewaySettings) -> anyhow::Result<()> {
         .upstream_rpc_url
         .as_deref()
         .context("GATEWAY_UPSTREAM_RPC_URL is not set")?;
-    let root_url = settings
-        .root_rpc_url
-        .as_deref()
-        .context("GATEWAY_ROOT_RPC_URL or SEPOLIA_RPC_URL is not set")?;
+    let source = root_source(&settings, &deployment)?;
     let cors_origins = settings
         .cors_origins
         .iter()
@@ -125,10 +125,6 @@ pub async fn run(settings: GatewaySettings) -> anyhow::Result<()> {
         .cached_roots(window_start(current))
         .await
         .context("cannot read the root cache")?;
-    let source = Arc::new(RegistryRootSource::new(
-        parse_url("GATEWAY_ROOT_RPC_URL", root_url)?,
-        deployment.root_registry_address,
-    ));
     let roots = RootTracker::new(source, cached);
     let config = GatewayConfig::new(
         deployment,
@@ -159,6 +155,40 @@ pub async fn run(settings: GatewaySettings) -> anyhow::Result<()> {
     refresh_roots(&gateway).await;
     spawn_background(&gateway, Duration::from_secs(settings.root_poll_seconds));
     serve(gateway, settings.public_bind, settings.admin_bind).await
+}
+
+/// Make the root source that `GATEWAY_ROOT_SOURCE` selects.
+fn root_source(
+    settings: &GatewaySettings,
+    deployment: &anon_credit_protocol::DeploymentConfig,
+) -> anyhow::Result<Arc<dyn RootSource>> {
+    match settings.root_source {
+        RootSourceKind::Contract => {
+            let root_url = settings
+                .root_rpc_url
+                .as_deref()
+                .context("GATEWAY_ROOT_RPC_URL or SEPOLIA_RPC_URL is not set")?;
+            Ok(Arc::new(RegistryRootSource::new(
+                parse_url("GATEWAY_ROOT_RPC_URL", root_url)?,
+                deployment.root_registry_address,
+            )))
+        }
+        RootSourceKind::IssuerHttp => {
+            let issuer_url = settings
+                .root_issuer_url
+                .as_deref()
+                .context("GATEWAY_ROOT_SOURCE=issuer-http needs GATEWAY_ROOT_ISSUER_URL")?;
+            tracing::warn!(
+                "root source is issuer-http: the gateway trusts the issuer for roots; use it only for local runs"
+            );
+            let source = IssuerHttpRootSource::new(
+                parse_url("GATEWAY_ROOT_ISSUER_URL", issuer_url)?,
+                ISSUER_ROOTS_TIMEOUT,
+            )
+            .map_err(|e| anyhow!("{e}"))?;
+            Ok(Arc::new(source))
+        }
+    }
 }
 
 /// Serve the public and the admin listener until Ctrl-C.

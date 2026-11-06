@@ -1,7 +1,14 @@
 //! Accepted roots (implementation.md section 6, FUTURE.md C7).
 //!
-//! [`RootSource`] reads published roots. [`RegistryRootSource`] reads the `RootRegistry`
-//! contract on Sepolia at the `finalized` block tag. It does not trust the issuer HTTP API.
+//! [`RootSource`] reads published roots. There are two sources. `GATEWAY_ROOT_SOURCE` selects
+//! one of them:
+//!
+//! - `contract` (default): [`RegistryRootSource`] reads the `RootRegistry` contract at the
+//!   `finalized` block tag. It does not trust the issuer HTTP API. Use it for the testnet run.
+//! - `issuer-http`: [`IssuerHttpRootSource`] reads `GET /v1/roots` of the issuer and accepts only
+//!   records with the status `finalized`. It trusts the issuer. Use it only for a local
+//!   integration run.
+//!
 //! Tests use a fake source.
 //!
 //! [`RootTracker`] keeps the published roots of the last [`ROOT_WINDOW_EPOCHS`] source epochs.
@@ -15,10 +22,12 @@ use alloy::providers::{DynProvider, Provider, ProviderBuilder};
 use anon_credit_crypto::FieldElement;
 use anon_credit_protocol::admin::RootStatus;
 use anon_credit_protocol::api::AcceptedRoot;
+use anon_credit_protocol::issuer_api::{IssuerRootsResponse, PublicationStatus};
 use anon_credit_protocol::{Address, Bytes32, DecimalU64};
 use async_trait::async_trait;
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::time::Duration;
 
 alloy::sol! {
     /// Read interface of `contracts/src/RootRegistry.sol`.
@@ -107,6 +116,136 @@ impl RootSource for RegistryRootSource {
                 leaf_count: record.leafCount,
             })),
         }
+    }
+}
+
+/// Largest number of records in one `GET /v1/roots` page of the issuer.
+const ISSUER_ROOT_PAGE: u32 = 1000;
+
+/// Finalized records of the last issuer response.
+#[derive(Debug, Default)]
+struct IssuerRootCache {
+    // Lowest epoch of the last list. Below it the cache has no information.
+    first_epoch: Option<u64>,
+    finalized: BTreeMap<u64, PublishedRoot>,
+}
+
+/// Issuer HTTP reader (FUTURE.md C7). It accepts only records with the status `finalized`.
+///
+/// This source trusts the issuer for the root values. The contract source does not. Use it only
+/// for the local integration run.
+#[derive(Debug)]
+pub struct IssuerHttpRootSource {
+    client: reqwest::Client,
+    base: reqwest::Url,
+    cache: Mutex<IssuerRootCache>,
+}
+
+impl IssuerHttpRootSource {
+    /// Make a reader for the issuer at `base` (for example `http://127.0.0.1:8080`).
+    pub fn new(base: reqwest::Url, timeout: Duration) -> Result<Self, RootSourceError> {
+        let client = reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .map_err(|_| RootSourceError("cannot make the issuer HTTP client".to_owned()))?;
+        Ok(Self {
+            client,
+            base,
+            cache: Mutex::new(IssuerRootCache::default()),
+        })
+    }
+
+    fn cache(&self) -> std::sync::MutexGuard<'_, IssuerRootCache> {
+        self.cache.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Read one page of `GET /v1/roots`. `from` is `None` for the default page (the last 96).
+    async fn read_roots(&self, from: Option<u64>) -> Result<IssuerRootsResponse, RootSourceError> {
+        let mut url = self
+            .base
+            .join("/v1/roots")
+            .map_err(|_| RootSourceError("issuer URL is not valid".to_owned()))?;
+        if let Some(epoch) = from {
+            url.query_pairs_mut()
+                .append_pair("from", &epoch.to_string())
+                .append_pair("limit", &ISSUER_ROOT_PAGE.to_string());
+        }
+        // Do not put the URL in the error. Keep only the kind of failure.
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| RootSourceError("issuer roots request failed".to_owned()))?;
+        if !response.status().is_success() {
+            return Err(RootSourceError(format!(
+                "issuer roots request returned status {}",
+                response.status().as_u16()
+            )));
+        }
+        response
+            .json::<IssuerRootsResponse>()
+            .await
+            .map_err(|_| RootSourceError("issuer roots response is not valid".to_owned()))
+    }
+
+    /// Replace the cache with the finalized records of `response`. `from` is the first epoch
+    /// that the request asked for. A response has all records from that epoch, up to the page
+    /// size. The default page starts at its lowest record.
+    fn remember(&self, response: &IssuerRootsResponse, from: Option<u64>) {
+        let mut cache = self.cache();
+        cache.first_epoch =
+            from.or_else(|| response.roots.iter().map(|record| record.epoch.0).min());
+        cache.finalized = finalized_records(response);
+    }
+}
+
+/// The records of a response with the status `finalized`, by epoch.
+fn finalized_records(response: &IssuerRootsResponse) -> BTreeMap<u64, PublishedRoot> {
+    response
+        .roots
+        .iter()
+        .filter(|record| record.status == PublicationStatus::Finalized)
+        .map(|record| {
+            (
+                record.epoch.0,
+                PublishedRoot {
+                    root: Bytes32(record.root.to_bytes_be()),
+                    leaf_count: u64::from(record.leaf_count),
+                },
+            )
+        })
+        .collect()
+}
+
+#[async_trait]
+impl RootSource for IssuerHttpRootSource {
+    async fn latest_epoch(&self) -> Result<u64, RootSourceError> {
+        let response = self.read_roots(None).await?;
+        self.remember(&response, None);
+        Ok(self
+            .cache()
+            .finalized
+            .keys()
+            .next_back()
+            .copied()
+            .unwrap_or(0))
+    }
+
+    async fn root_at(&self, epoch: u64) -> Result<Option<PublishedRoot>, RootSourceError> {
+        {
+            let cache = self.cache();
+            if let Some(published) = cache.finalized.get(&epoch) {
+                return Ok(Some(*published));
+            }
+            // The last list has this epoch, and the record is not finalized.
+            if cache.first_epoch.is_some_and(|first| epoch >= first) {
+                return Ok(None);
+            }
+        }
+        let response = self.read_roots(Some(epoch)).await?;
+        self.remember(&response, Some(epoch));
+        Ok(self.cache().finalized.get(&epoch).copied())
     }
 }
 

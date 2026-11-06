@@ -26,6 +26,38 @@ pub const MIN_ADMIN_TOKEN_LEN: usize = 16;
 /// Default origins for CORS: the development browser page and the dashboard.
 pub const DEFAULT_CORS_ORIGINS: &str = "http://localhost:5173,http://localhost:5174";
 
+/// Source of accepted roots (`GATEWAY_ROOT_SOURCE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootSourceKind {
+    /// `contract` (default): `RootRegistry` at the `finalized` block tag.
+    Contract,
+    /// `issuer-http`: the issuer `GET /v1/roots`, only `finalized` records. Local runs only.
+    IssuerHttp,
+}
+
+impl RootSourceKind {
+    /// The text of the setting.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Contract => "contract",
+            Self::IssuerHttp => "issuer-http",
+        }
+    }
+}
+
+fn read_root_source(
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<RootSourceKind, SettingsError> {
+    match read_optional(lookup, "GATEWAY_ROOT_SOURCE").as_deref() {
+        None | Some("contract") => Ok(RootSourceKind::Contract),
+        Some("issuer-http") => Ok(RootSourceKind::IssuerHttp),
+        Some(_) => Err(invalid(
+            "GATEWAY_ROOT_SOURCE",
+            "must be contract or issuer-http",
+        )),
+    }
+}
+
 /// Gateway settings.
 #[derive(Debug, Clone)]
 pub struct GatewaySettings {
@@ -41,6 +73,10 @@ pub struct GatewaySettings {
     pub upstream_rpc_url: Option<String>,
     /// RPC to read roots (`GATEWAY_ROOT_RPC_URL`, else `SEPOLIA_RPC_URL`). Secret.
     pub root_rpc_url: Option<String>,
+    /// Source of accepted roots (`GATEWAY_ROOT_SOURCE`). Default: the contract.
+    pub root_source: RootSourceKind,
+    /// Issuer base URL for the `issuer-http` root source (`GATEWAY_ROOT_ISSUER_URL`).
+    pub root_issuer_url: Option<String>,
     /// Admin bearer token (`GATEWAY_ADMIN_TOKEN`). Secret.
     pub admin_token: Option<String>,
     /// Demo profile: capture the observed source IP (`DEMO_IP_LOGGING`). Default `false`.
@@ -185,6 +221,8 @@ impl GatewaySettings {
             upstream_rpc_url: read_optional(lookup, "GATEWAY_UPSTREAM_RPC_URL"),
             root_rpc_url: read_optional(lookup, "GATEWAY_ROOT_RPC_URL")
                 .or_else(|| read_optional(lookup, "SEPOLIA_RPC_URL")),
+            root_source: read_root_source(lookup)?,
+            root_issuer_url: read_optional(lookup, "GATEWAY_ROOT_ISSUER_URL"),
             admin_token: read_optional(lookup, "GATEWAY_ADMIN_TOKEN"),
             demo_ip_logging: read_bool(lookup, "DEMO_IP_LOGGING", false)?,
             trusted_proxies,
@@ -215,7 +253,22 @@ impl GatewaySettings {
             "GATEWAY_UPSTREAM_RPC_URL: {}",
             presence(&self.upstream_rpc_url)
         ));
-        lines.push(format!("root RPC URL: {}", presence(&self.root_rpc_url)));
+        lines.push(format!("root source: {}", self.root_source.as_str()));
+        match self.root_source {
+            RootSourceKind::Contract => {
+                lines.push(format!("root RPC URL: {}", presence(&self.root_rpc_url)));
+            }
+            RootSourceKind::IssuerHttp => {
+                lines.push(format!(
+                    "GATEWAY_ROOT_ISSUER_URL: {}",
+                    presence(&self.root_issuer_url)
+                ));
+                lines.push(
+                    "WARNING: issuer-http root source trusts the issuer; use it only for local runs"
+                        .to_owned(),
+                );
+            }
+        }
         lines.push(format!(
             "GATEWAY_ADMIN_TOKEN: {}",
             presence(&self.admin_token)
@@ -307,6 +360,32 @@ mod tests {
         assert_eq!(settings.forwarded_header.as_str(), "x-real-ip");
         assert!(
             GatewaySettings::from_lookup(&lookup_from(&[("GATEWAY_PROOF_CONCURRENCY", "0")]))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn root_source_defaults_to_contract_and_reads_issuer_http() {
+        let settings = GatewaySettings::from_lookup(&lookup_from(&[])).unwrap();
+        assert_eq!(settings.root_source, RootSourceKind::Contract);
+        let settings = GatewaySettings::from_lookup(&lookup_from(&[
+            ("GATEWAY_ROOT_SOURCE", "issuer-http"),
+            ("GATEWAY_ROOT_ISSUER_URL", "http://127.0.0.1:8080"),
+        ]))
+        .unwrap();
+        assert_eq!(settings.root_source, RootSourceKind::IssuerHttp);
+        assert_eq!(
+            settings.root_issuer_url.as_deref(),
+            Some("http://127.0.0.1:8080")
+        );
+        assert!(
+            settings
+                .summary_lines()
+                .join("\n")
+                .contains("root source: issuer-http")
+        );
+        assert!(
+            GatewaySettings::from_lookup(&lookup_from(&[("GATEWAY_ROOT_SOURCE", "issuer")]))
                 .is_err()
         );
     }

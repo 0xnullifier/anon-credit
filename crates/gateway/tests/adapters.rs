@@ -322,3 +322,133 @@ async fn root_source_trait_reports_unpublished_epochs() {
     assert_eq!(source.latest_epoch().await.unwrap(), 5);
     assert!(source.root_at(4).await.unwrap().is_none());
 }
+
+/// One issuer root record as JSON.
+fn issuer_record(epoch: u64, leaf_count: u32, root: u64, status: &str) -> Value {
+    let block = match status {
+        "finalized" | "included" => json!(epoch.to_string()),
+        _ => Value::Null,
+    };
+    let tx = match status {
+        "pending" | "skipped" => Value::Null,
+        _ => json!(format!("0x{}", "ab".repeat(32))),
+    };
+    json!({
+        "epoch": epoch.to_string(),
+        "leaf_count": leaf_count,
+        "root": FieldElement::from_u64(root).to_hex(),
+        "status": status,
+        "tx_hash": tx,
+        "block_number": block,
+    })
+}
+
+/// A fake issuer: `GET /v1/roots` with the optional `from` and `limit` query. It records the
+/// query of each request.
+async fn fake_issuer(records: Vec<Value>, seen: Arc<Mutex<Vec<String>>>) -> SocketAddr {
+    let app = Router::new().route(
+        "/v1/roots",
+        get(move |query: axum::extract::RawQuery| {
+            let records = records.clone();
+            let seen = seen.clone();
+            async move {
+                let text = query.0.unwrap_or_default();
+                seen.lock().unwrap().push(text.clone());
+                let from = text
+                    .split('&')
+                    .find_map(|pair| pair.strip_prefix("from="))
+                    .and_then(|value| value.parse::<u64>().ok());
+                let roots: Vec<Value> = records
+                    .iter()
+                    .filter(|record| {
+                        let epoch: u64 = record["epoch"].as_str().unwrap().parse().unwrap();
+                        from.is_none_or(|start| epoch >= start)
+                    })
+                    .cloned()
+                    .collect();
+                Json(json!({"current_epoch": "20", "finalized_block": "90", "roots": roots}))
+            }
+        }),
+    );
+    serve_local(app).await
+}
+
+#[tokio::test]
+async fn issuer_http_source_accepts_only_finalized_records() {
+    use anon_credit_gateway::roots::IssuerHttpRootSource;
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let records = vec![
+        issuer_record(10, 3, 100, "finalized"),
+        issuer_record(11, 3, 101, "skipped"),
+        issuer_record(12, 5, 102, "finalized"),
+        issuer_record(13, 5, 103, "included"),
+        issuer_record(14, 6, 104, "submitted"),
+        issuer_record(15, 6, 105, "pending"),
+    ];
+    let addr = fake_issuer(records, seen.clone()).await;
+    let base = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
+    let source = IssuerHttpRootSource::new(base, Duration::from_secs(5)).unwrap();
+
+    // The latest epoch is the newest finalized record, not the newest record.
+    assert_eq!(source.latest_epoch().await.unwrap(), 12);
+    let ten = source.root_at(10).await.unwrap().unwrap();
+    assert_eq!(ten.root, Bytes32(FieldElement::from_u64(100).to_bytes_be()));
+    assert_eq!(ten.leaf_count, 3);
+    assert_eq!(source.root_at(11).await.unwrap(), None);
+    assert_eq!(source.root_at(13).await.unwrap(), None);
+    assert_eq!(source.root_at(15).await.unwrap(), None);
+    // The default list covers epochs 10 and up, so these reads use no new request.
+    assert_eq!(seen.lock().unwrap().len(), 1);
+
+    // An epoch below the list asks the issuer from that epoch.
+    assert_eq!(source.root_at(4).await.unwrap(), None);
+    let queries = seen.lock().unwrap().clone();
+    assert_eq!(queries.len(), 2);
+    assert_eq!(queries[1], "from=4&limit=1000");
+
+    // The tracker accepts the two finalized roots.
+    let tracker = RootTracker::new(Arc::new(source), Vec::new());
+    let added = tracker.refresh(20, 1).await.unwrap();
+    let epochs: Vec<u64> = added.iter().map(|record| record.source_epoch).collect();
+    assert_eq!(epochs, vec![10, 12]);
+}
+
+#[tokio::test]
+async fn issuer_http_source_reports_bad_responses_without_the_url() {
+    use anon_credit_gateway::roots::IssuerHttpRootSource;
+    let app = Router::new().route(
+        "/v1/roots",
+        get(|| async { (StatusCode::SERVICE_UNAVAILABLE, "down") }),
+    );
+    let addr = serve_local(app).await;
+    let base = reqwest::Url::parse(&format!("http://{addr}/?key=secret")).unwrap();
+    let source = IssuerHttpRootSource::new(base, Duration::from_secs(5)).unwrap();
+    let error = source.latest_epoch().await.unwrap_err();
+    assert!(error.0.contains("503"));
+    assert!(!error.0.contains("secret"));
+
+    // A record with an unknown field is not valid.
+    let app = Router::new().route(
+        "/v1/roots",
+        get(|| async {
+            let mut record = issuer_record(1, 1, 1, "finalized");
+            record["extra"] = json!(true);
+            Json(json!({"current_epoch": "2", "finalized_block": null, "roots": [record]}))
+        }),
+    );
+    let addr = serve_local(app).await;
+    let source = IssuerHttpRootSource::new(
+        reqwest::Url::parse(&format!("http://{addr}")).unwrap(),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    assert!(source.latest_epoch().await.is_err());
+
+    // No server.
+    let source = IssuerHttpRootSource::new(
+        reqwest::Url::parse("http://127.0.0.1:9").unwrap(),
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    assert!(source.root_at(3).await.is_err());
+}
