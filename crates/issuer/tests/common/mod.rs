@@ -143,6 +143,11 @@ impl MockChain {
         }
     }
 
+    /// Remove the publisher key.
+    pub fn publisher_off(&self) {
+        self.state().publisher = None;
+    }
+
     pub fn finalize(&self, number: u64) {
         self.add_block(number);
         self.state().finalized = Some(number);
