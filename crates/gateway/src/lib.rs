@@ -24,6 +24,7 @@ pub mod epoch;
 pub mod roots;
 pub mod rpc;
 pub mod settings;
+pub mod store;
 pub mod strict_json;
 pub mod upstream;
 pub mod verifier;
