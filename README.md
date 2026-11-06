@@ -353,11 +353,20 @@ TypeScript (`pnpm-lock.yaml` pins the full set): typescript 7.0.2, vitest 5.1.0,
 @vitejs/plugin-react 6.2.1, playwright-core 1.65.0, @anon-rpc/browser-harness 0.4.0,
 @types/node 26.6.6.
 
-## ProveKit (phase 1A)
+## ProveKit (phases 1A and 1C)
 
-Status: the gate passes. Headless Chromium proves the sample circuit with the ProveKit WASM
-prover, and the Rust verifier in `crates/prover` verifies the browser proof. The Rust verifier
-also rejects a tampered proof, a proof with a changed public input, and a wrong expected input.
+Status: both gates pass.
+
+- Phase 1A: headless Chromium proves the sample circuit with the ProveKit WASM prover, and the
+  Rust verifier in `crates/prover` verifies the browser proof.
+- Phase 1C: headless Chromium proves the real `circuits/batch-open` statement (scalar and
+  threaded builds) for a real witness: a tree of 100 leaves, leaf 37, the deployment and
+  gateway IDs of `fixtures/protocol/deployment-id.json`, and a real Ed25519 session key. The
+  Rust verifier accepts the browser proof. It rejects a proof with a changed byte, and, for each
+  of the 10 public inputs one at a time, a wrong expected value and a changed value in the proof.
+
+The gateway calls the verifier through the loopback sidecar `anon-credit-prover serve` (see
+"Verifier sidecar" below).
 
 ### Pins
 
@@ -379,7 +388,8 @@ Noir: ProveKit compiles the circuit with its own Noir 1.0.0-beta.26 frontend. Th
 noirup (`~/.nargo/bin`, 1.0.0-beta.12) cannot compile code for this frontend: beta.26 removed
 `u1` and keeps only `std::hash::poseidon2_permutation` (the sponge is private to the standard
 library). `install.sh` puts nargo 1.0.0-beta.26 in `~/dev/noir-1.0.0-beta.26/bin` and does not
-replace the noirup nargo. Move `circuits/batch-open` to beta.26 before it is prepared with ProveKit.
+replace the noirup nargo. Phase 1C moved `circuits/batch-open` and `fixtures/protocol/noir-vectors`
+to beta.26. All circuits of the project now use beta.26.
 
 ### Why not the published `@worldcoin/provekit` SDK
 
@@ -420,10 +430,12 @@ and native proving and verification are slower. See `alternativeRelease` in `art
 
 | Path | Contents |
 |---|---|
-| `tooling/provekit/` | `pins.env`, `install.sh` (CLI, nargo, wasm-bindgen), `build-wasm.sh`, `prepare-sample.sh`, the WASM patch |
+| `tooling/provekit/` | `pins.env`, `install.sh` (CLI, nargo, wasm-bindgen), `build-wasm.sh`, `prepare-sample.sh`, `prepare-batch-open.sh`, the WASM patch |
 | `circuits/provekit-sample/` | Sample circuit: Poseidon2 batch ID, depth-16 Merkle path with a private index, expiry check. 3 public inputs, 5136 constraints. |
-| `crates/prover/` | `anon-credit-prover`: `PinnedVerifier`, `Proof`, `PublicInput`, `Sha256Digest`; binary `anon-credit-prover` (`verify`, `bench`, `inspect`) |
-| `packages/prover/` | `@anon-credit/prover`: manifest and digest checks, worker, `createBatchOpenProver`; `dev/` test page and `dev/gate.ts` |
+| `crates/prover/` | `anon-credit-prover`: `PinnedVerifier`, `Proof`, `PublicInput`, `Sha256Digest`, `serve` (sidecar); binary `anon-credit-prover` (`verify`, `bench`, `inspect`, `serve`) |
+| `packages/prover/` | `@anon-credit/prover`: manifest and digest checks, worker, `createBatchOpenProver`, batch-open ABI check and `batchOpenInputsSchema`; `dev/` test page (`?circuit=sample` or `batch-open`) and `dev/gate.ts --circuit sample\|batch-open` |
+| `artifacts/batch-open/` | Checked in (1.9 MB): `batch-open.pkp`, `batch-open.pkv`, `batch-open-standard.pkv` (non-hiding, tests only), `prover-manifest.json` (pinned), `gate-witness.json`, `abi.json`, `nargo-info.txt`, `prepare.json`, `proof.np`, `proof.native.json`, `proof.browser.json` |
+| `artifacts/batch-open-results.json` | Measured batch-open gate results |
 | `artifacts/provekit-sample/` | Checked in (1.5 MB): `sample.pkp`, `sample.pkv`, `sample-standard.pkv` (non-hiding, tests only), `proof.np`, `proof.native.json`, `proof.browser.json` |
 | `artifacts/provekit-wasm/` | Built WASM (about 5 MB each). Git ignores it. |
 | `artifacts/provekit-sample/prover-manifest.json` | Written by the gate. Git ignores it, because the WASM digests change with the build machine. |
@@ -445,6 +457,9 @@ transcript pattern that only debug provers write, and it panics on release proof
 export PATH="$HOME/.foundry/bin:$HOME/.nargo/bin:$PATH"
 tooling/provekit/install.sh          # ProveKit CLI at the pin, nargo beta.26, wasm-bindgen-cli
 tooling/provekit/prepare-sample.sh   # nargo test, prepare (zk), native prove and verify
+cargo run -p anon-credit-registry --example generate_fixtures   # batch-open Prover.toml and gate witness
+tooling/provekit/prepare-batch-open.sh   # batch-open: nargo test and info, prepare (zk),
+                                         # native prove and verify, prepare.json
 
 # Native verify and bench with the Rust adapter
 cd crates/prover
@@ -460,8 +475,9 @@ cd ../..
 # Browser gate: scalar (no isolation) and threaded (COOP/COEP) proofs in headless Chromium,
 # verified by the Rust adapter. Set CHROMIUM_PATH or use the Playwright cache.
 tooling/provekit/build-wasm.sh
-node packages/prover/dev/gate.ts     # GATE_WRITE_FIXTURE=1 also replaces proof.browser.json
-PROVEKIT_GATE=1 ./check.sh           # all checks and the gate
+node packages/prover/dev/gate.ts     # sample; GATE_WRITE_FIXTURE=1 also replaces proof.browser.json
+node packages/prover/dev/gate.ts --circuit batch-open   # real circuit; writes artifacts/batch-open-results.json
+PROVEKIT_GATE=1 ./check.sh           # all checks and both gates
 
 pnpm --filter @anon-credit/prover dev   # test page on http://localhost:5180 (scalar)
 ```
@@ -498,3 +514,123 @@ batch-open circuit.
 
 The noir_js and ACVM WASM files (about 3.7 MB raw) are part of the page bundle, not of the
 manifest. The download sizes above do not include them. `wasm-opt` was not run.
+
+### Batch-open circuit (phase 1C)
+
+The keys are deterministic: `prepare-batch-open.sh` gives the same PKP and PKV digests for the
+same pins and the same circuit. The prover manifest pins the PKP, the PKV, and the WASM files
+(sizes and SHA-256). The WASM files are not checked in (about 5 MB each). The manifest digest
+below is valid only for the WASM bytes that `build-wasm.sh` made on the measurement machine.
+A different WASM build gives a different manifest digest, and thus a new deployment. Phase 4
+must host the exact WASM bytes that the manifest pins.
+
+Measured on an Apple M4 Pro (12 cores), HeadlessChrome 149, `GATE_RUNS=3`
+(`artifacts/batch-open-results.json`, `artifacts/batch-open/prepare.json`):
+
+| Circuit size | Value |
+|---|---:|
+| ACIR opcodes (`nargo info`) | 819 |
+| ProveKit R1CS constraints | 14,416 |
+| ProveKit R1CS witnesses | 14,672 |
+| Public inputs | 10 |
+
+| Measurement | Scalar WASM | Threaded WASM (8 threads) | Native CLI |
+|---|---:|---:|---:|
+| Warm proof (witness and proving), runs 2 and 3 | 504 ms | 172 ms | 100 ms (process wall time) |
+| Witness generation (noir_js), warm | 7 ms | 6 ms | |
+| Cold first proof (worker start, download, checks, init, proof) | 720 ms | 391 ms | |
+| WASM linear memory after proving | 25.9 MiB | 42.1 MiB | 68.5 MiB peak RSS |
+| Artifact download, raw (WASM, glue, PKP) | 5.54 MB | 5.70 MB | |
+| Artifact download, gzip | 1.49 MB | 1.52 MB | |
+
+| Artifact, proof, and verification | Value |
+|---|---:|
+| PKP (prover key, xz-compressed) | 326 KB |
+| PKV (verifier key) | 179 KB |
+| Browser proof (JSON encoding) | 477 KB (318 KB gzip) |
+| Native proof (binary `.np`, zstd) | 306 KB |
+| Rust verify, browser proof, 1 thread (`RAYON_NUM_THREADS=1`) | 26.2 ms median |
+| Rust verify, browser proof, 12 threads | 13.4 ms median |
+| Sidecar `POST /verify` (`duration_ms`, decode and verify, default threads) | 14 to 16 ms |
+
+Unmet target: the single-core verification target is 20 ms (PROVER.md section 7). The measured
+single-thread median is 26.2 ms. The proof is larger than the 50 to 200 KB target in
+Architecture.md (306 KB binary, 477 KB JSON). The 16 MiB body limit has a large margin.
+
+### Public-input order contract
+
+`fixtures/protocol/batch-open-public-inputs.json` has the exact field-element vector that the
+verifier receives, in order, and one real case (the gate witness). The registry fixture
+generator writes it from a list that follows the parameters of `main`, not from the Rust or
+TypeScript code. These tests check it:
+
+- `crates/crypto/tests/public_inputs.rs`: `PUBLIC_INPUT_NAMES` and
+  `BatchOpenPublicInputs::for_open(..).to_fields()` (the gateway form).
+- `packages/crypto/src/public-inputs.test.ts`: `PUBLIC_INPUT_NAMES` and `batchOpenPublicInputs`
+  (the SDK form).
+- `crates/prover/tests/batch_open.rs`: the public inputs of the native and the Chromium proofs
+  are equal to the contract vector. The 10 values are distinct, so a different order fails.
+
+| Index | Name | Gateway source |
+|---|---|---|
+| 0 | `circuit_id` | `DeploymentConfig.circuit_id` (= `CIRCUIT_ID`) |
+| 1 | `deployment_id_hi` | `DeploymentConfig.deployment_id()`, bytes 0..16 |
+| 2 | `deployment_id_lo` | `DeploymentConfig.deployment_id()`, bytes 16..32 |
+| 3 | `gateway_id_hi` | `DeploymentConfig.gateway_id`, bytes 0..16 |
+| 4 | `gateway_id_lo` | `DeploymentConfig.gateway_id`, bytes 16..32 |
+| 5 | `root` | accepted root record that the open request selects |
+| 6 | `leaf_count` | leaf count of the same root record |
+| 7 | `proof_epoch` | open request; the gateway checks freshness |
+| 8 | `batch_id` | open request |
+| 9 | `binding` | `H(DOM_BINDING, gateway_id_hi, gateway_id_lo, session_pub_hi, session_pub_lo)` from the session key of the open request |
+
+Each value is a canonical BN254 field element (`0x` and 64 lowercase hex digits, big-endian).
+The ProveKit JSON proof stores the same values as little-endian hex.
+
+### Deployment configuration values
+
+`config/deployment.testnet.template.toml` has these public values. The test
+`deployment_template_pins_these_artifacts` checks them against `artifacts/batch-open/`.
+The secret scan of `check.sh` accepts non-zero 32-byte values only on these three keys.
+
+| Field | Value | Source |
+|---|---|---|
+| `circuit_id` | `0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e` | `CIRCUIT_ID` (`anon-credit/v1/batch-open`) as 32 bytes |
+| `verifier_artifact_hash` | `0xc8b4fb4722bb6d926d73112223865bd2756413f6f8085e549a90dd16a8aef6d4` | SHA-256 of `artifacts/batch-open/batch-open.pkv` |
+| `prover_manifest_hash` | `0x373a90b6dde1fc48f6ee771659d76fe87b9c454fee606ab637c65a255c557648` | SHA-256 of `artifacts/batch-open/prover-manifest.json` |
+
+The PKP digest (in the manifest) is `be804ed5936ffc4b82509136371bc0f4b6d7b4781188990595d20d3e9636b2e9`.
+
+### Verifier sidecar
+
+The gateway uses stable Rust. ProveKit needs the nightly toolchain. Thus the gateway does not
+link ProveKit: it sends each proof to `anon-credit-prover serve`, a separate process that
+listens only on `127.0.0.1`.
+
+```sh
+cd crates/prover
+cargo run --release -- serve --pkv ../../artifacts/batch-open/batch-open.pkv \
+  --pkv-sha256 c8b4fb4722bb6d926d73112223865bd2756413f6f8085e549a90dd16a8aef6d4
+# options: --port 8083 --circuit-id <0xhex> --max-concurrency 2 --max-queue 32
+#          --max-body-bytes 16777216 --max-proof-bytes 4194304
+```
+
+| Route | Request | Response |
+|---|---|---|
+| `POST /verify` | `{"proof": <JSON proof object as the browser emits, or base64 string of JSON or binary .np bytes>, "public_inputs": ["0x..", ...]}` | `{"ok": bool, "duration_ms": number, "error_code": string \| null}` |
+| `GET /health` | | `{"ok", "pkv_sha256", "circuit_id", "witness_mode": "zk", "hash", "provekit_rev", "num_public_inputs", "num_constraints", "max_concurrency", "max_body_bytes"}` |
+
+- The gateway makes `public_inputs` from its own values (the order contract). It does not copy
+  them from the client.
+- `error_code` values: `invalid_request` (400), `body_too_large` (413), `busy` (503),
+  `internal` (500), and, with status 200 and `ok: false`: `circuit_id_mismatch`,
+  `proof_malformed`, `public_input_count`, `public_input_mismatch`, `proof_invalid`.
+- At most `max_concurrency` verifications run at the same time (default 2). At most
+  `max_queue` requests wait (default 32). Other requests get `busy` at once.
+- The body limit (16 MiB) and the proof limit (4 MiB) apply before the proof is decoded.
+- The sidecar loads the PKV only if its SHA-256 is the pinned digest and the key is hiding.
+- `duration_ms` is the decode and verification time. It does not include the queue time.
+
+`crates/prover` adds these dependencies, at the versions of the root workspace: axum 0.8.9
+(http1, json, tokio), tokio 1.54.1, serde 1, base64 0.22.1; tests: tower 0.5.3, http-body-util
+0.1.5.
