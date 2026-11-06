@@ -902,12 +902,14 @@ the direct probe with the real socket peer. Each replay round uses new batch IDs
 
 ### Tests
 
-`pnpm --filter @anon-credit/dashboard test`: 48 Vitest tests, no browser and no extra
+`pnpm --filter @anon-credit/dashboard test`: 66 Vitest tests, no browser and no extra
 dependencies (rendering uses `react-dom/server`). They cover the SSE parser, the stream client
 (reconnect, `Last-Event-ID`, 401, invalid and repeated events), the API clients (token only in
 the header, never in a URL, no token to the public gateway, schema rejection), the session
-storage (also when storage throws), the event model, rendering of the probe comparison and the
-"unavailable" profile, the price hash check, and integration tests over HTTP against the mock
+storage (also when storage throws), the event model, the session timeline (order and the
+inferred `open_received`), the demo comparison (probe next to the newest opened session and its
+spends) and the "unavailable" profile, the deadline in UTC, the receipt count, the price hash
+check, the verifier pin check, the public API cross-check, and integration tests over HTTP against the mock
 in both IP profiles. Test data comes from `fixtures/protocol/gateway-api.json`, which the Rust
 gateway tests also check, so the shapes match the gateway.
 
