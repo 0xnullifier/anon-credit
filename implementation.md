@@ -29,6 +29,7 @@ The user selected ProveKit, the repository layout, and direct testnet operation.
 | Proof system | Native ProveKit Spartan/WHIR proof. Hiding mode enabled. No Groth16 wrapper. |
 | Circuit frontend | Noir for the first circuit. Mavros is an alternative Noir compiler, not a different circuit language. |
 | Client proving | Browser WASM in a dedicated worker controlled by the example page. |
+| Gateway proof verification | A separate loopback sidecar process (`anon-credit-prover serve`, ProveKit nightly toolchain). The stable-Rust gateway sends `POST /verify` to it. The gateway does not link ProveKit. |
 | Anonymity transport | Existing Nox worker through `@anon-rpc/browser-harness`. Reuse the current demo's verified integration. |
 | Payment | Native test ETH paid to an issuer-owned sale contract. Exact whole batches only. |
 | Payment and root chain | Sepolia, chain ID 11155111. Deploy contracts directly to testnet. No local chain or fork-based example. |
