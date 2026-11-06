@@ -3,7 +3,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { sharedPrices, sharedRoots, sharedSnapshot } from "../testing/shared.ts";
-import { PrivacyPanel, priceHashMatches } from "./PrivacyPanel.tsx";
+import { PrivacyPanel, priceHashMatches, sameRoots, verifierKeyMatches } from "./PrivacyPanel.tsx";
 
 describe("PrivacyPanel", () => {
   it("checks the price table hash against the canonical encoding", () => {
@@ -29,6 +29,40 @@ describe("PrivacyPanel", () => {
     expect(html.toLowerCase()).not.toContain("verified anonymous");
   });
 
+  it("checks the price table hash of the snapshot", () => {
+    expect(priceHashMatches(sharedSnapshot)).toBe(true);
+  });
+
+  it("compares the sidecar verifier key with the deployment pin", () => {
+    expect(verifierKeyMatches(sharedSnapshot)).toBe(false);
+    const pinned = { ...sharedSnapshot, verifier: { ...sharedSnapshot.verifier, pkv_sha256: sharedSnapshot.verifier_artifact_hash.slice(2) } };
+    expect(verifierKeyMatches(pinned)).toBe(true);
+  });
+
+  it("shows the snapshot values and says that the public API agrees", () => {
+    const html = renderToStaticMarkup(
+      <PrivacyPanel
+        snapshot={sharedSnapshot}
+        prices={{ state: "ready", value: sharedPrices, at: 1 }}
+        roots={{ state: "ready", value: sharedRoots, at: 1 }}
+        onReload={() => {}}
+      />,
+    );
+    expect(sameRoots(sharedRoots.roots, sharedSnapshot.accepted_roots)).toBe(true);
+    expect(html.match(/agrees with the snapshot/g)?.length).toBe(2);
+    expect(html).toContain("Epoch length");
+    expect(html).toContain("off (DEMO_IP_LOGGING=false)");
+    expect(html).toContain("differs from the pin");
+  });
+
+  it("says when the public roots differ from the snapshot", () => {
+    const other = { ...sharedRoots, roots: [] };
+    const html = renderToStaticMarkup(
+      <PrivacyPanel snapshot={sharedSnapshot} prices={{ state: "idle" }} roots={{ state: "ready", value: other, at: 1 }} onReload={() => {}} />,
+    );
+    expect(html).toContain("differs from the snapshot");
+  });
+
   it("shows a failed public read", () => {
     const html = renderToStaticMarkup(
       <PrivacyPanel
@@ -39,6 +73,9 @@ describe("PrivacyPanel", () => {
       />,
     );
     expect(html).toContain("prices: network error or CORS refusal");
-    expect(html).toContain("Accepted roots: loading");
+    expect(html).toContain("Public GET /v1/roots: loading");
+    // The snapshot values stay on the page.
+    expect(html).toContain("eth_getBalance");
+    expect(html).toContain("1 accepted roots in a window of 96 source epochs");
   });
 });
