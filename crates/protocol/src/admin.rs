@@ -7,9 +7,10 @@
 //! Events and snapshots have no keys, proofs, tokens, RPC parameters, or RPC results.
 //! The observed source IP is `"unavailable"` unless the demo profile turns on IP capture.
 
-use crate::api::{IpAttribution, ReceiptMetadata, SessionState};
+use crate::api::{AcceptedRoot, IpAttribution, ReceiptMetadata, SessionState};
 use crate::error::ErrorCode;
 use crate::hex_bytes::Bytes32;
+use crate::price::PriceTable;
 use crate::wire::DecimalU64;
 use serde::{Deserialize, Serialize};
 
@@ -210,12 +211,26 @@ pub struct AdminSnapshot {
     pub gateway_id: Bytes32,
     /// Chain ID of the upstream RPC.
     pub upstream_chain_id: u64,
+    /// Epoch length in seconds (deployment value). Epoch `e` starts at `e * epoch_seconds`.
+    pub epoch_seconds: u32,
+    /// Circuit ID of the deployment (public input 0).
+    pub circuit_id: Bytes32,
+    /// SHA-256 of the verifier key that the deployment pins.
+    pub verifier_artifact_hash: Bytes32,
     /// `true` if the demo profile captures the observed source IP.
     pub demo_ip_logging: bool,
     /// Proof verifier status.
     pub verifier: VerifierStatus,
+    /// keccak256 of the canonical encoding of [`AdminSnapshot::price_table`].
+    pub price_table_hash: Bytes32,
+    /// Current price table. The same value as `GET /v1/prices`.
+    pub price_table: PriceTable,
     /// Root status.
     pub roots: RootStatus,
+    /// Root acceptance window in source epochs.
+    pub root_window_epochs: u32,
+    /// Accepted roots, newest first. The same list as `GET /v1/roots`.
+    pub accepted_roots: Vec<AcceptedRoot>,
     /// Event counters since start.
     pub counters: EventCounters,
     /// Session totals.

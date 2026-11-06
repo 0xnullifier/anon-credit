@@ -6,7 +6,8 @@
 import { z } from "zod";
 import { MAX_U32 } from "./bytes.ts";
 import { errorCodeSchema } from "./errors.ts";
-import { ipAttributionSchema, receiptMetadataSchema, sessionStateSchema } from "./gateway-api.ts";
+import { acceptedRootSchema, ipAttributionSchema, receiptMetadataSchema, sessionStateSchema } from "./gateway-api.ts";
+import { priceTableSchema } from "./price.ts";
 import { decimalU64TextSchema, hex32TextSchema } from "./wire.ts";
 
 // Value of the observed IP field when IP capture is off.
@@ -100,9 +101,20 @@ export const adminSnapshotSchema = z.strictObject({
   deployment_id: hex32TextSchema,
   gateway_id: hex32TextSchema,
   upstream_chain_id: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  // Epoch length in seconds (deployment value). Epoch e starts at e * epoch_seconds.
+  epoch_seconds: z.number().int().min(1).max(MAX_U32),
+  circuit_id: hex32TextSchema,
+  // SHA-256 of the verifier key that the deployment pins.
+  verifier_artifact_hash: hex32TextSchema,
   demo_ip_logging: z.boolean(),
   verifier: verifierStatusSchema,
+  // keccak256 of the canonical encoding of price_table. Check it with priceTableHash.
+  price_table_hash: hex32TextSchema,
+  price_table: priceTableSchema,
   roots: rootStatusSchema,
+  root_window_epochs: u32Schema,
+  // Accepted roots, newest first. The same list as GET /v1/roots.
+  accepted_roots: z.array(acceptedRootSchema),
   counters: eventCountersSchema,
   sessions: sessionTotalsSchema,
   recent_events: z.array(gatewayEventSchema),
