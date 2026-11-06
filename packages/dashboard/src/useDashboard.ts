@@ -10,7 +10,7 @@
 import type { AdminSnapshot, GatewayEvent, PricesResponse, RootsResponse, SessionDetail } from "@anon-credit/protocol";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { IDLE, type Load } from "./components/common.tsx";
-import type { ProbeResult } from "./components/DiagnosticsPanel.tsx";
+import type { ProbeResult } from "./components/DemoComparisonPanel.tsx";
 import { fetchPrices, fetchRoots, fetchSession, fetchSnapshot, probePeer, type Connection } from "./lib/api.ts";
 import { runEventStream } from "./lib/event-stream.ts";
 import type { EventFilter } from "./lib/events-model.ts";

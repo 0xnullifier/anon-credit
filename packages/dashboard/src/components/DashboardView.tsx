@@ -1,9 +1,10 @@
-// The dashboard page: the four views and the proof and privacy panel on one page.
+// The dashboard page: the four views, the demo comparison, and the proof and privacy panel
+// on one page.
 
-import { latestSessionEvent } from "../lib/events-model.ts";
 import type { Connection } from "../lib/api.ts";
 import type { FetchLike } from "../lib/http.ts";
 import { useDashboard } from "../useDashboard.ts";
+import { DemoComparisonPanel } from "./DemoComparisonPanel.tsx";
 import { DiagnosticsPanel } from "./DiagnosticsPanel.tsx";
 import { EventList } from "./EventList.tsx";
 import { HealthPanel } from "./HealthPanel.tsx";
@@ -46,19 +47,21 @@ export function DashboardView(props: DashboardViewProps) {
           <EventList events={events} filter={board.filter} onFilter={board.setFilter} onSelectBatch={board.select} />
           <SessionPanel
             snapshot={snapshot}
+            events={events}
             selected={board.selected}
             detail={board.detail}
             onSelect={board.select}
             onRefresh={board.refreshDetail}
           />
-          <DiagnosticsPanel
+          <DiagnosticsPanel ipLogging={snapshot.demo_ip_logging} latestEvent={events.at(-1) ?? null} />
+          <DemoComparisonPanel
             ipLogging={snapshot.demo_ip_logging}
-            latestEvent={events.at(-1) ?? null}
-            sessionEvent={latestSessionEvent(events)}
+            events={events}
             probe={board.probe}
             gatewayUrl={board.gatewayUrl}
             onGatewayUrl={board.setGatewayUrl}
             onProbe={board.runProbe}
+            onSelectBatch={board.select}
           />
           <PrivacyPanel snapshot={snapshot} prices={board.prices} roots={board.roots} onReload={board.loadPublic} />
         </div>

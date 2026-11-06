@@ -4,12 +4,12 @@
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { DemoComparisonPanel } from "../src/components/DemoComparisonPanel.tsx";
 import { DiagnosticsPanel } from "../src/components/DiagnosticsPanel.tsx";
 import { EventList } from "../src/components/EventList.tsx";
 import { HealthPanel } from "../src/components/HealthPanel.tsx";
 import { PrivacyPanel } from "../src/components/PrivacyPanel.tsx";
 import { SessionPanel } from "../src/components/SessionPanel.tsx";
-import { latestSessionEvent } from "../src/lib/events-model.ts";
 import { INITIAL_LIVE } from "../src/lib/live-state.ts";
 import { loadFixture, MockGateway } from "./mock-server.ts";
 
@@ -30,19 +30,21 @@ function renderPage(ipLogging: boolean): { html: string; eventCount: number } {
       <EventList events={events} filter={{ kind: "all", batch: "" }} onFilter={noop} onSelectBatch={noop} />
       <SessionPanel
         snapshot={snapshot}
+        events={events}
         selected={batchId}
         detail={detail === null ? { state: "failed", error: "missing" } : { state: "ready", value: detail, at: 1 }}
         onSelect={noop}
         onRefresh={noop}
       />
-      <DiagnosticsPanel
+      <DiagnosticsPanel ipLogging={snapshot.demo_ip_logging} latestEvent={events.at(-1) ?? null} />
+      <DemoComparisonPanel
         ipLogging={snapshot.demo_ip_logging}
-        latestEvent={events.at(-1) ?? null}
-        sessionEvent={latestSessionEvent(events)}
+        events={events}
         probe={{ state: "idle" }}
         gatewayUrl="http://127.0.0.1:8081"
         onGatewayUrl={noop}
         onProbe={noop}
+        onSelectBatch={noop}
       />
       <PrivacyPanel
         snapshot={snapshot}
@@ -66,6 +68,9 @@ describe("dashboard page", () => {
     expect(html).toContain("Observed source IP");
     expect(html).toContain("198.51.100.23");
     expect(html).toContain("Recent receipts");
+    expect(html).toContain("Timeline of the selected batch");
+    expect(html).toContain("Demo comparison");
+    expect(html).toContain("Can spend until (UTC)");
     expect(html).toContain("matches the canonical encoding");
     expect(html.toLowerCase()).not.toContain("verified anonymous");
   });
