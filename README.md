@@ -16,7 +16,7 @@ Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not dele
 | 1. Proof feasibility | Pin ProveKit and Noir, batch-open circuit, hash encodings, artifacts | Done (1A gate, 1B statement, 1C real circuit in Chromium, verifier sidecar) |
 | 2. Credit issuance | Sepolia contracts, issuer indexing, MMR snapshots, root publication | Done in code and tests; Sepolia deployment and a real finalized payment are open (the user deploys) |
 | 3. Gateway | Open, spend, receipts, status recovery, pricing, limits | Done in code and tests; a live run needs the deployed contracts, the sidecar, and an upstream RPC |
-| 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Not started |
+| 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Done in code and tests; the local integration harness passes 15 of 15 steps (anvil, direct transport). The Sepolia run through Nox is open: it needs the deployment and public HTTPS services, and Nox refuses request bodies above about 48 KB, so the open request (about 640 KB) does not pass |
 | 5. Dashboard | Admin snapshots, event stream, session views, demo IP attribution | Done in code and tests against the mock admin server and the shared schemas; a live run needs a running gateway |
 | 6. Complete demo | Script and dashboard on the same paid flow through Nox | Not started |
 | 7. Measurement | Proving, resource, and gateway benchmarks | Not started |
@@ -62,6 +62,7 @@ Run all checks:
 ./check.sh            # or: pnpm check
 SKIP_OPTIONAL=1 ./check.sh   # skip Foundry, Noir, and ProveKit
 PROVEKIT_GATE=1 ./check.sh   # also run both Chromium gates (sample and batch-open)
+INTEGRATION=1 ./check.sh     # also run the local phase 4 integration harness
 ```
 
 `check.sh` runs these commands in order and stops at the first failure:
@@ -79,6 +80,7 @@ PROVEKIT_GATE=1 ./check.sh   # also run both Chromium gates (sample and batch-op
 | Circuits | `nargo test` (1.0.0-beta.26) in `circuits/batch-open/` and `circuits/provekit-sample/` |
 | Prover (if the ProveKit toolchain is installed) | `cargo fmt --check`, `cargo clippy`, `cargo test` in `crates/prover/` |
 | Browser gates (`PROVEKIT_GATE=1`) | `node packages/prover/dev/gate.ts --circuit sample`, then `--circuit batch-open` |
+| Integration harness (`INTEGRATION=1`) | `tooling/dev/integration.sh` (anvil, sidecar, issuer, gateway, Chromium; see phase 4) |
 
 Other commands:
 
@@ -87,7 +89,8 @@ cargo run --bin issuer -- --print-settings   # print issuer settings and exit
 cargo run --bin issuer      # run the issuer (needs a deployment file and SEPOLIA_RPC_URL)
 cargo run --bin gateway     # run the gateway (needs the sidecar; see "Gateway (phase 3)")
 pnpm dashboard:dev          # dashboard on http://localhost:5174
-pnpm example:e2e            # placeholder: prints settings, exits with code 2 until phase 4
+pnpm example:e2e -- --dry-run   # Sepolia example: settings and connectivity checks only
+pnpm test:integration       # local integration harness (anvil, services, Chromium)
 ```
 
 ## Repository layout
@@ -116,7 +119,7 @@ packages/
   anon-transport/       @anon-credit/anon-transport: Anon-RPC harness wrapper (phase 4)
   dashboard/            @anon-credit/dashboard: React and Vite operator dashboard (phase 5)
 
-examples/e2e/           Sepolia end-to-end runner (phase 4): run.ts, browser/, fixtures/
+examples/e2e/           Sepolia runner (run.ts), local harness (integration.ts), browser/ page, src/ step list
 circuits/batch-open/    Noir batch-open circuit (Noir 1.0.0-beta.26)
 contracts/              Foundry project: src/, test/, script/ (phase 2)
 config/                 Deployment template and environment profiles; no secrets
@@ -162,6 +165,8 @@ the environment. The services print `set` or `not set` for secrets, never the va
 | `GATEWAY_DATABASE_PATH` | `data/gateway.db` | Gateway SQLite database. |
 | `GATEWAY_UPSTREAM_RPC_URL` | not set | Upstream Sepolia RPC for paid reads. Secret if it has a key. |
 | `GATEWAY_ROOT_RPC_URL` | `SEPOLIA_RPC_URL` | RPC to read finalized roots from `RootRegistry`. |
+| `GATEWAY_ROOT_SOURCE` | `contract` | `contract` or `issuer-http` (local runs only; see "Gateway root source"). |
+| `GATEWAY_ROOT_ISSUER_URL` | not set | Issuer base URL for `issuer-http`. |
 | `GATEWAY_ADMIN_TOKEN` | not set | Admin API bearer token. Secret. |
 | `DEMO_IP_LOGGING` | `false` | `true` only in the demo profile. Accepts only `true` or `false`. |
 | `GATEWAY_TRUSTED_PROXY_ADDRS` | not set | Trusted reverse proxy addresses, comma separated. More gateway variables: "Gateway (phase 3)". |
@@ -634,6 +639,199 @@ clients, and the public-input fixtures.
 `crates/gateway` adds these crate-local dependencies (all already in `Cargo.lock`):
 async-trait 0.1.92, futures-util 0.3.34, tower-http 0.6.11 (cors); tests: ed25519-dalek,
 http-body-util 0.1.5, tempfile 3.27.0, tower 0.5.3.
+
+## SDK, transport, and end-to-end runs (phase 4)
+
+### Parts
+
+| Part | Path |
+|---|---|
+| Client SDK (browser side) | `packages/sdk/src/` (`@anon-credit/sdk`) |
+| Purchase coordination (Node runner side, viem) | `packages/sdk/src/purchase.ts` (`@anon-credit/sdk/purchase`) |
+| Anon-RPC transport (Nox) and the direct test transport | `packages/anon-transport/src/` (`@anon-credit/anon-transport`) |
+| Gateway issuer-HTTP root source | `crates/gateway/src/roots.rs` (`IssuerHttpRootSource`), `GATEWAY_ROOT_SOURCE` |
+| End-to-end page (prover worker, SDK, harness) | `examples/e2e/browser/` |
+| Shared step list of implementation.md section 15 | `examples/e2e/src/scenario.ts` |
+| Local integration harness (anvil, direct transport) | `examples/e2e/integration.ts`, `tooling/dev/integration.sh` |
+| Sepolia example (Nox) | `examples/e2e/run.ts`, `examples/e2e/src/sepolia*.ts` |
+| Nox header and size probe | `examples/e2e/nox-probe.ts` |
+
+### SDK API
+
+```ts
+import { createClient, indexedDbStorage } from "@anon-credit/sdk";
+import { createAnonTransport } from "@anon-credit/anon-transport";
+import { createBatchOpenProver } from "@anon-credit/prover";
+
+const transport = await createAnonTransport();              // Nox, Sepolia bootstrap RPC, waits for ready
+const prover = await createBatchOpenProver({ manifestUrl, manifestSha256, mode: "scalar" });
+const client = await createClient({
+  gatewayUrl, issuerUrl, transport, prover,
+  storage: await indexedDbStorage({ name: "anon-credit" }),
+  passphrase,                                              // unlocks the encrypted store; never print it
+  proverManifestSha256: "0x...",                           // the client pin (deployment prover_manifest_hash)
+});
+const batches = await client.createBatches(3);           // [{ batchId, commitment }]; secrets stay in the browser
+// The runner buys with the commitments (see below) and gives the issuance to the page:
+await client.attachIssuance(issuance);
+await client.open(batches[0].batchId);                    // eligible root, delay, path check, proof, signed open
+const session = await client.session(batches[0].batchId);
+const outcome = await session.rpc("eth_blockNumber", []); // { seq, remaining, nextSeq, replayed, response, request, ... }
+await client.rpc("eth_chainId", []);                      // pays with the current batch; opens the next batch as needed
+await client.rotate();                                    // leave the current batch
+await client.resumePending();                             // send journaled requests again after a restart
+const backup = await client.exportBackup();               // "acb1." + base64(payload | checksum)
+```
+
+Other exports: `prepareOpen`/`submitOpen` (split open, used by the step list), `client.status(batchId)`
+(signed status; also for a batch without a session), `session.resume({ retryAsNew })`,
+`session.buildRequest`/`sendRaw` (diagnostic probes without a state change), `importBackup`,
+`memoryStorage`, `openEncryptedStore`, `createBatchSecret`, `createSessionKey`, `batchValues`,
+`registryClient`, `verifyPath`, `selectRoot`, and the error classes `SdkError`, `ServiceError`
+(stable `serviceCode`), `LostResultError`.
+
+Runner side (Node only): `checkFunding`, `buyCalldata`, `submitPurchase` (CreditSale.buy with exactly
+`batch_price_wei * n`; returns the transaction hash and the `Purchased` log index), `registerTopup`,
+`waitForIssuance` (polls `GET /v1/topups/...` until `issued`; registers again on `not_found`).
+The runner receives only commitments. Batch secrets and session keys never leave the browser.
+
+### SDK rules
+
+- Batch secret: 32 bytes from `crypto.getRandomValues`. Commitment, `batch_id`, leaf, and the public
+  inputs come from `@anon-credit/crypto`. One Ed25519 session key per batch (`@noble/curves`). The
+  tests sign the shared open, status, and spend vectors with the RFC 8032 key and get the fixture
+  signatures.
+- Deployment check at `createClient`: the issuer `deployment_id` is keccak256 of its deployment; the
+  gateway and the issuer agree on `deployment_id`, `gateway_id`, `circuit_id`, verifier hash, and
+  epoch; `prover_manifest_hash` is the pinned manifest digest; `/v1/prices` hashes to the config value.
+- Open: wait until `eligible_epoch + delay` (delay 0 to 3 epochs, chosen once per batch; injectable).
+  Select the newest root that the gateway accepts, that the issuer reports as `finalized` with the
+  same root and leaf count, with `source_epoch >= eligible_epoch` (insertion epoch + 1). Fetch the
+  path on the isolation key `registry:<batch_id>` and check it locally. Build the witness, check that
+  the witness public inputs equal `batchOpenPublicInputs` (the order of
+  `fixtures/protocol/batch-open-public-inputs.json`), validate with `batchOpenInputsSchema`, prove,
+  and sign the open message. `existing: true` is accepted; units and sequence are not reset. A
+  `proof_epoch_stale` answer gives one new proof.
+- Spend: one UTF-8 JSON-RPC object (`id` = seq). The exact bytes and the signature are journaled in
+  the encrypted store before transmission. Units come from the price table frozen at open;
+  `units_total` is cumulative; the sequence starts at 0. A lost response is sent again with the same
+  bytes and signature (default 3 sends). `busy`, `upstream_failed`, and `storage_unavailable` are sent
+  again the same way. After `response_expired`, the SDK reads the signed status, updates the local
+  state, and throws `LostResultError` with the receipt; it sends a new charged request only with
+  `retryAsNew`. A rejected request (signature, units, method, gap, conflict) is removed from the
+  journal; the gateway did not charge it.
+- State without the `X-Anon-*` headers: the SDK uses the signed `POST /v1/session/status`
+  (`stateSource: "status"`).
+- Storage: AES-256-GCM per record, the record key as additional data, a PBKDF2-SHA-256 key (600,000
+  iterations, random salt) from the passphrase, and a check value (a wrong passphrase fails at
+  unlock). Records: deployment identity; per batch the secret, session key, leaf metadata, delay,
+  open request, session state, and the pending request.
+- Isolation: the batch ID is the isolation key of open, spend, and status of that batch.
+  `registry:<batch_id>` is the key of its path reads. `config` is the key of configuration reads.
+- Transport: `createClient` refuses a transport of kind `direct` unless `allowDirectTransport: true`.
+  On a transport failure the request fails (`transport_failed`); the SDK never calls `fetch` itself.
+
+### Transport notes (Nox)
+
+`createAnonTransport({ worker, bootstrapRpcUrl, readyTimeoutMs })` does what `anon-rpc-demo` does:
+Nox specifier on Sepolia, a check that the bootstrap RPC is on chain 11155111, `worker.ready` with a
+timeout, `acceptLog` into `transport.logs`, and a `switch` on `RpcError.code` with a `default` case.
+`transport.fetch(url, init, { isolationKey })` sets `anonOptions.isolationKey`.
+
+Measured with `node examples/e2e/nox-probe.ts` (live Nox network, headless Chromium 149, 2026-11-07):
+
+| Check | Result |
+|---|---|
+| `X-Anon-Remaining`, `X-Anon-Next-Seq`, `X-Anon-Replayed` through Nox | Readable. The harness copies every worker response header into the `Response`. The status fallback stays in the SDK. |
+| Nox on a cross-origin isolated page (COOP/COEP) | Works (ready in about 4 s, one GET about 2 s). The threaded prover and Nox can share the page. |
+| Nox ready time | 4 to 5 s typical; some starts took about 80 s. The SDK default timeout is 120 s (the example uses 180 s). |
+| POST body size through Nox | 48,000 bytes passed. 60,000, 65,000, 130,000, and 700,000 bytes failed with `protocol-error: TLS record buffering ... failed to write whole buffer`, also with a stream body. |
+
+Consequence: spend and status requests (about 1 KB) pass through Nox. An open request carries the
+ProveKit proof (about 475 KB JSON, about 640 KB as base64) and does NOT pass through the current Nox
+worker. The Sepolia run will fail at step 8 until one of these is done: a chunked open upload in the
+gateway protocol, a smaller proof encoding (the binary proof is about 306 KB, still too large), or a
+Nox worker with a larger request limit. `NOX_MEASURED_MAX_BODY_BYTES` records the measured value.
+
+### Local integration harness
+
+```sh
+pnpm test:integration                    # or: tooling/dev/integration.sh, or INTEGRATION=1 ./check.sh
+```
+
+Needs `~/.foundry/bin` (anvil, forge), cargo, the ProveKit nightly toolchain (sidecar build), and
+Chromium (`CHROMIUM_PATH` or the Playwright cache). If `artifacts/provekit-wasm/` is missing, the
+harness runs `tooling/provekit/build-wasm.sh`. `SKIP_OPTIONAL=1` stops `check.sh` before this step.
+
+What it does: anvil with 1 s blocks and `--slots-in-an-epoch 1` (anvil gives `finalized` = latest - 2,
+so the issuer and the gateway use the real `finalized` tag), `forge script Deploy.s.sol` (anvil test
+mnemonic keys: deployer 0, issuer 1, payer 2), a deployment TOML with `epoch_seconds = 5` (the issuer
+gets `EPOCH_SECONDS=5`), the verifier sidecar, the issuer, the gateway (`GATEWAY_ROOT_SOURCE=contract`
+against anvil, `DEMO_IP_LOGGING=true`), and the Vite page with COOP/COEP. Then the step list of
+implementation.md section 15 in headless Chromium with the DIRECT transport (Nox cannot reach
+localhost). It stops only the processes that it started. Logs and databases go to a temporary
+directory (printed). Result: `examples/e2e/results/integration-result.json`.
+
+Last run (Apple M4 Pro, Chromium 149, threaded prover with 8 threads, 25 s in total): 15 of 15 steps
+pass. Remaining 100 -> 99 -> 98 -> 96, next_seq 1, 2, 3; the replay returns the same body with
+`X-Anon-Replayed: true` and no debit; same seq with another body: `sequence_conflict`; bad signature:
+401 `signature_invalid`; gap: 409 `sequence_gap`; balance stays 96; 96 one-unit reads to 0, then
+`insufficient_units` with next_seq 99; second batch opens on its own isolation key (remaining 99 after
+one read); a modified proof gives `proof_invalid` and no session row (`not_found`), then the valid
+open gives 100; the admin view matches (0, 99, 100). Proof: 475 KB, 228 ms (witness 45 ms).
+
+### Sepolia example
+
+```sh
+pnpm example:e2e -- --dry-run   # settings, identities, chain IDs, artifacts, connectivity, funding; no transaction
+pnpm example:e2e                # the full run
+```
+
+It refuses an `E2E_GATEWAY_URL` or `E2E_ISSUER_URL` that is not HTTPS, that is localhost, or that is or
+resolves to a private, loopback, link-local, or shared address (exit code 2 for settings). It stops
+before the purchase if a preflight check fails. It uses the same page and step code as the harness
+with the Nox transport, a real purchase from the test payer, finality progress lines, the random
+first-use delay, a two-hour default timeout, and a sanitized result
+(`examples/e2e/results/sepolia-result.json`, no keys, passphrase, token, or RPC URL). It exits nonzero on
+a failed step or on the timeout. It has not run: no deployment exists, and the Nox request size limit
+above blocks step 8.
+
+| Variable | Use |
+|---|---|
+| `E2E_GATEWAY_URL`, `E2E_ISSUER_URL` | Public HTTPS URLs of the deployed services. Required. |
+| `E2E_PAYER_KEY` | Test payer key (secret, testnet funds only). Required. |
+| `E2E_PAYMENT_RPC_URL` (else `SEPOLIA_RPC_URL`) | Payer RPC for the purchase and the funding check. Required. |
+| `NOX_BOOTSTRAP_RPC_URL` | RPC that reads the Nox specifier. Default: public Sepolia RPC. |
+| `E2E_TIMEOUT_SECONDS` | Overall timeout. Default 7200. |
+| `E2E_PAGE_PORT` | Port of the local page. Default 5173. |
+| `E2E_DEPLOYMENT_ID` | Optional `deployment_id` pin. |
+| `E2E_ADMIN_URL`, `GATEWAY_ADMIN_TOKEN` | Optional private admin access for step 15 (both or neither). |
+| `E2E_PROVER_MODE` | `auto` (default), `scalar`, or `threaded`. |
+| `E2E_TEST_ADDRESS` | Address for `eth_getBalance`. Default `0x...dead`. |
+| `E2E_RESULT_PATH` | Result file. |
+
+The pinned prover manifest is the local `artifacts/batch-open/prover-manifest.json`; its SHA-256 must
+equal the deployment `prover_manifest_hash`, so the page serves the exact WASM bytes that the
+deployment pins.
+
+### Gateway root source
+
+`GATEWAY_ROOT_SOURCE=contract` (default) reads `RootRegistry` at the `finalized` tag. `issuer-http`
+reads the issuer `GET /v1/roots` (`GATEWAY_ROOT_ISSUER_URL`) and accepts only `finalized` records. It
+trusts the issuer and exists for local runs; the harness does not need it, because anvil supports
+the `finalized` tag. Tests: `cargo test -p anon-credit-gateway --test adapters issuer_http`.
+
+### Tests
+
+```sh
+pnpm --filter @anon-credit/sdk test             # 29: vectors, gate witness, open, spend, retries, expiry, journal, isolation, storage, backup
+pnpm --filter @anon-credit/anon-transport test  # 7: harness lifecycle with a fake worker, error codes, no fallback
+pnpm --filter @anon-credit/example-e2e test     # 6: Sepolia dry run with fakes, URL policy
+node examples/e2e/nox-probe.ts                  # live Nox probe (internet access)
+```
+
+New dependency versions: viem 2.57.11 (SDK runner side and the example), fake-indexeddb 6.2.6 (SDK
+tests), vite 8.3.6 in the example; `@noble/curves` 2.4.0 is now a runtime dependency of the SDK.
 
 ## Dashboard (phase 5)
 

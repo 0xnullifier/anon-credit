@@ -1,15 +1,22 @@
 # End-to-end example
 
-Status: placeholder (phase 0). Phase 4 implements the run.
+Two runs share the same browser page (`browser/`) and the same step list (`src/scenario.ts`,
+implementation.md section 15). Only the transport, the endpoints, and the timing differ.
 
-The run uses deployed Sepolia contracts, public HTTPS services, and the real Nox worker.
-It does not start a local chain. It does not mock proofs or give free credit.
+| Run | Command | Chain | Transport |
+|---|---|---|---|
+| Local integration harness | `pnpm test:integration` (`node examples/e2e/integration.ts`) | anvil, 1 s blocks, 5 s epochs | direct (Nox cannot reach localhost) |
+| Sepolia example | `pnpm example:e2e` | Sepolia, deployed contracts | Nox |
+| Sepolia dry run | `pnpm example:e2e -- --dry-run` | none (reads only) | none |
+| Nox probe | `node examples/e2e/nox-probe.ts` | none | Nox |
 
-```sh
-pnpm example:e2e
-```
+The Sepolia run does not start a chain and does not deploy contracts. It does not mock proofs or
+give free credit. It refuses a localhost or private gateway or issuer URL. The payer needs test
+ETH for three batches and gas. Never commit the payer key. Settings: `config/testnet-demo.env.example`
+and the README section "SDK, transport, and end-to-end runs (phase 4)".
 
-Until phase 4, the command prints its settings and exits with code 2 ("not implemented").
+Results go to `results/` (git ignores it): `integration-result.json`, `sepolia-result.json`,
+`nox-header-probe.json`. A result has no keys, passphrase, token, or RPC URL.
 
-Settings come from environment variables. See `config/testnet-demo.env.example`.
-The payer needs test ETH for the purchase and gas. Never commit the payer key.
+Known blocker for the Sepolia run: the Nox worker refuses request bodies above about 48 KB. The
+open request with the proof is about 640 KB. See the README for the measurement.
