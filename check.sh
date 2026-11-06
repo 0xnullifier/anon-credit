@@ -55,8 +55,11 @@ if grep -nE '^(SEPOLIA_RPC_URL|GATEWAY_UPSTREAM_RPC_URL|GATEWAY_ROOT_RPC_URL)=.+
   echo "FAIL: a private RPC URL has a value in tracked configuration"
   exit 1
 fi
-# A 32-byte hex value that is not all zero can be a private key.
-if grep -noE '0x[0-9a-fA-F]{64}' $config_files | grep -vE ':0x0{64}$'; then
+# A 32-byte hex value that is not all zero can be a private key. The public circuit and
+# artifact digests of the deployment template are the only exceptions.
+public_digest_line=':(circuit_id|verifier_artifact_hash|prover_manifest_hash) = "0x[0-9a-f]{64}"$'
+if grep -nE '0x[0-9a-fA-F]{64}' $config_files | grep -vE "$public_digest_line" \
+  | grep -oE '0x[0-9a-fA-F]{64}' | grep -vE '^0x0{64}$'; then
   echo "FAIL: a non-placeholder 32-byte hex value is in tracked configuration"
   exit 1
 fi
