@@ -448,6 +448,16 @@ impl Harness {
         self.post_with(path, body, &[]).await
     }
 
+    pub async fn put(&self, path: &str, body: Vec<u8>) -> TestResponse {
+        let request = Request::builder()
+            .method("PUT")
+            .uri(path)
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        Self::send(self.router(), request).await
+    }
+
     pub async fn get(&self, path: &str) -> TestResponse {
         let request = Request::builder().uri(path).body(Body::empty()).unwrap();
         Self::send(self.router(), request).await
@@ -566,7 +576,8 @@ impl Client {
             proof_epoch: DecimalU64(proof_epoch),
             session_pub: self.session_pub(),
             price_table_hash: options.price_table_hash.unwrap_or(config.price_table_hash),
-            proof: Base64Bytes(fake_proof(&inputs.to_fields())),
+            proof: Some(Base64Bytes(fake_proof(&inputs.to_fields()))),
+            proof_upload: None,
             signature: Signature64([0; 64]),
         };
         request.signature = self.sign(&request.message().digest());
