@@ -13,13 +13,17 @@
 //! - [`mmr_hash`]: MMR leaf-node, internal-node, and root hash rules.
 //! - [`public_inputs`]: the public-input vector of the batch-open circuit.
 
+pub mod batch;
 #[rustfmt::skip]
 pub mod constants;
 pub mod ed25519;
 pub mod field;
 pub mod keccak;
+pub mod mmr_hash;
 pub mod poseidon2;
+pub mod public_inputs;
 
 pub use ed25519::{ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN, Ed25519Error, verify_ed25519};
 pub use field::{FIELD_BYTES, FieldElement, FieldError, bytes32_to_limbs};
 pub use keccak::{KECCAK256_LEN, keccak256};
+pub use public_inputs::{BatchOpenPublicInputs, PUBLIC_INPUT_COUNT};
