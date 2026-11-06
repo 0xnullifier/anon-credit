@@ -50,6 +50,13 @@ build_variant scalar
 build_variant threaded
 unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS
 
+# The wasm-bindgen-rayon worker helper imports the main module as '../../..'. That works
+# only with a bundler. Use the explicit file name, so the helper also works without one.
+helper=$(find "$out/threaded/snippets" -name workerHelpers.js)
+sed -i.orig "s|import('../../..')|import('../../../provekit_wasm.js')|" "$helper"
+rm -f "$helper.orig"
+grep -q "import('../../../provekit_wasm.js')" "$helper"
+
 # Leave the ProveKit tree clean.
 git -C "$PROVEKIT_WASM_SRC" checkout --quiet --force --detach "$PROVEKIT_REV"
 find "$out" -type f -name '*.wasm' -exec ls -l {} \;
