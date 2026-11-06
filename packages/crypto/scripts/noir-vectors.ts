@@ -19,15 +19,13 @@ export interface RawVector {
 
 function parseFieldList(text: string): bigint[] {
   const trimmed = text.trim();
-  switch (true) {
-    case trimmed.startsWith("[") && trimmed.endsWith("]"):
-      return trimmed
-        .slice(1, -1)
-        .split(",")
-        .map((part) => parseField(part));
-    default:
-      return [parseField(trimmed)];
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return trimmed
+      .slice(1, -1)
+      .split(",")
+      .map((part) => parseField(part));
   }
+  return [parseField(trimmed)];
 }
 
 function parseField(text: string): bigint {
