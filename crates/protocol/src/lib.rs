@@ -5,8 +5,9 @@
 //!
 //! Later phases add these parts here:
 //!
-//! - Phase 1: circuit domain tags (`c`, `leaf`, `id`, MMR nodes, session binding) and the
-//!   public-input layout. Phase 1 freezes these with the Poseidon2 parameters.
+//! - Phase 1 (done): the circuit domain tags, the Poseidon2 hash, and the batch-open
+//!   public-input layout are in `anon_credit_crypto` (`constants`, `batch`, `public_inputs`).
+//!   Their single source is `fixtures/protocol/domains.json`.
 //! - Phase 3: JSON envelopes for open, spend, and status requests, and the open and status
 //!   signing messages.
 
