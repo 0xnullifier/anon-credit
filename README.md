@@ -17,7 +17,7 @@ Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not dele
 | 2. Credit issuance | Sepolia contracts, issuer indexing, MMR snapshots, root publication | Done in code and tests; Sepolia deployment and a real finalized payment are open (the user deploys) |
 | 3. Gateway | Open, spend, receipts, status recovery, pricing, limits | Done in code and tests; a live run needs the deployed contracts, the sidecar, and an upstream RPC |
 | 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Not started |
-| 5. Dashboard | Admin snapshots, event stream, session views, demo IP attribution | Not started |
+| 5. Dashboard | Admin snapshots, event stream, session views, demo IP attribution | Done in code and tests against the mock admin server and the shared schemas; a live run needs a running gateway |
 | 6. Complete demo | Script and dashboard on the same paid flow through Nox | Not started |
 | 7. Measurement | Proving, resource, and gateway benchmarks | Not started |
 
@@ -634,6 +634,80 @@ clients, and the public-input fixtures.
 `crates/gateway` adds these crate-local dependencies (all already in `Cargo.lock`):
 async-trait 0.1.92, futures-util 0.3.34, tower-http 0.6.11 (cors); tests: ed25519-dalek,
 http-body-util 0.1.5, tempfile 3.27.0, tower 0.5.3.
+
+## Dashboard (phase 5)
+
+`packages/dashboard` is the operator dashboard: React 19 and Vite 8 on one page. It depends
+only on `@anon-credit/protocol`. It does not use the SDK and has no batch secrets. It reads the
+admin API (`GET /admin/v1/snapshot`, `GET /admin/v1/events`, `GET /admin/v1/sessions/{batch_id}`)
+with the bearer token, and the public `GET /v1/demo/peer`, `GET /v1/prices`, and `GET /v1/roots`
+without credentials.
+
+### Run
+
+```sh
+# Against the mock (no gateway needed). Token: mock-admin-token-0123456789
+pnpm --filter @anon-credit/dashboard dev:mock    # mock on 127.0.0.1:8082 and :8081, UI on :5174
+MOCK_IP_LOGGING=false pnpm --filter @anon-credit/dashboard dev:mock   # normal profile
+pnpm --filter @anon-credit/dashboard mock        # mock only
+
+# Against a real gateway (see "Gateway (phase 3)").
+pnpm dashboard:dev        # http://localhost:5174, then enter GATEWAY_ADMIN_TOKEN
+```
+
+The login form asks for the admin API URL (default `http://127.0.0.1:8082`), the public gateway
+URL (default `http://127.0.0.1:8081`), and the token. `VITE_ADMIN_URL` and `VITE_GATEWAY_URL`
+change the defaults. The token is kept only in the `sessionStorage` of the tab (each access is in
+`try/catch`). It goes only in the `Authorization` header, never in a URL or in `localStorage`.
+The gateway allows the dashboard origin with `GATEWAY_CORS_ORIGINS` (default includes
+`http://localhost:5174`).
+
+### Views
+
+| View | Source |
+|---|---|
+| Health and counters | Snapshot: status, upstream chain, epoch, accepted root age and refresh error, sessions (active, at zero, expired), request and failure counters, units charged; median and p95 latency of the received events; stream state, invalid and repeated events |
+| Live events | Snapshot `recent_events`, then the event stream. UTC time, kind, batch ID (short, copy, click for details), seq, method, result, latency, units, "Observed source IP". Filter by kind and batch ID. |
+| Session details | `GET /admin/v1/sessions/{batch_id}`: remaining, cumulative units, next seq, deadline, proof size, verification time, recent receipts. Refreshes when an event of the batch arrives. |
+| Connection diagnostics | Socket peer IP, effective source IP (trusted proxy), and attribution source of the newest event. "Direct probe" calls the public `GET /v1/demo/peer` from the browser and shows the result next to the newest anonymous session event. With `DEMO_IP_LOGGING=false` the field is "unavailable" with a note. |
+| Proof and privacy | Circuit ID, verifier key SHA-256, witness mode (snapshot); price table and hash with a local check of the canonical encoding (`/v1/prices`); accepted roots (`/v1/roots`). |
+
+The dashboard says "Observed source IP" and never "verified anonymous". Different observed
+addresses are evidence of routing, not proof against timing or content analysis; the page says
+this next to the comparison.
+
+### Event stream
+
+`EventSource` cannot send an `Authorization` header, so the dashboard reads the stream with
+`fetch` and parses it with its own parser (`src/lib/sse-parser.ts`: CRLF, CR, LF, split chunks,
+comments, `retry`). After the first snapshot it connects with `Last-Event-ID` set to the newest
+snapshot event. After a disconnect it reconnects with backoff (1 s to 15 s) and the last SSE
+`id`. A 401 stops the stream. Each event goes through `gatewayEventSchema`; an event that is not
+JSON, fails the schema, or has a JSON `id` different from the SSE `id` is discarded and counted.
+An ID that is not larger than the last accepted ID is counted as a repeat. Snapshots and session
+views go through `adminSnapshotSchema` and `sessionDetailSchema`. The snapshot is read every
+5 s and 1 s after new events.
+
+### Mock admin server
+
+`dev/mock-server.ts` (started by `dev/mock-admin.ts`) replays `dev/fixtures/mock-admin.json`:
+events with the `GatewayEvent` shape and the fields that each gateway code path sets, one
+malformed entry (the dashboard must count it as invalid), session templates, prices, and roots.
+Each fixture value is checked with the protocol schemas at start. The mock gives IDs and times
+when it replays, keeps counters by the rules of `crates/gateway/src/events.rs`, updates sessions
+and receipts from debit events, supports `Last-Event-ID`, needs the bearer token, and answers
+the direct probe with the real socket peer. Each replay round uses new batch IDs.
+
+### Tests
+
+`pnpm --filter @anon-credit/dashboard test`: 48 Vitest tests, no browser and no extra
+dependencies (rendering uses `react-dom/server`). They cover the SSE parser, the stream client
+(reconnect, `Last-Event-ID`, 401, invalid and repeated events), the API clients (token only in
+the header, never in a URL, no token to the public gateway, schema rejection), the session
+storage (also when storage throws), the event model, rendering of the probe comparison and the
+"unavailable" profile, the price hash check, and integration tests over HTTP against the mock
+in both IP profiles. Test data comes from `fixtures/protocol/gateway-api.json`, which the Rust
+gateway tests also check, so the shapes match the gateway.
 
 ## Pinned versions
 
