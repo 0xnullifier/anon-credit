@@ -19,9 +19,9 @@ export function domainTag(text: string): Uint8Array {
 
 // Domain of the deployment configuration digest (deployment_id).
 export const DEPLOYMENT_DOMAIN = domainTag("anon-credit/deployment");
-// Domain of the session-open signature. Phase 3 defines its message layout.
+// Domain of the session-open signature. See open.ts.
 export const OPEN_DOMAIN = domainTag("anon-credit/open");
 // Domain of the spend signature.
 export const SPEND_DOMAIN = domainTag("anon-credit/spend");
-// Domain of the session-status signature. Phase 3 defines its message layout.
+// Domain of the session-status signature. See status.ts.
 export const STATUS_DOMAIN = domainTag("anon-credit/status");
