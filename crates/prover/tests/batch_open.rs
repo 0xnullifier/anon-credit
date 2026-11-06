@@ -247,3 +247,44 @@ fn sample_key_does_not_verify_a_batch_open_proof() {
         })
     );
 }
+
+/// Reads `key = "0x.."` from the deployment template.
+fn template_value(key: &str) -> String {
+    let text = std::fs::read_to_string(repo("config/deployment.testnet.template.toml")).unwrap();
+    let prefix = format!("{key} = \"");
+    let line = text
+        .lines()
+        .find(|line| line.starts_with(&prefix))
+        .unwrap_or_else(|| panic!("template has no {key}"));
+    line[prefix.len()..line.len() - 1].to_owned()
+}
+
+/// The deployment template pins the artifacts in this directory.
+#[test]
+fn deployment_template_pins_these_artifacts() {
+    assert_eq!(
+        template_value("circuit_id"),
+        anon_credit_prover::serve::BATCH_OPEN_CIRCUIT_ID
+    );
+    assert_eq!(expected()[0].to_string(), template_value("circuit_id"));
+    assert_eq!(
+        template_value("verifier_artifact_hash"),
+        format!("0x{PKV_SHA256}")
+    );
+    let pkv = Sha256Digest::of(&read("batch-open.pkv"));
+    assert_eq!(pkv.to_string(), PKV_SHA256);
+    let manifest = Sha256Digest::of(&read("prover-manifest.json"));
+    assert_eq!(
+        template_value("prover_manifest_hash"),
+        format!("0x{manifest}")
+    );
+    // The manifest pins the same prover and verifier keys.
+    let parsed: serde_json::Value = serde_json::from_slice(&read("prover-manifest.json")).unwrap();
+    assert_eq!(parsed["circuit"], "batch_open");
+    assert_eq!(parsed["provekit"]["witnessMode"], "zk");
+    assert_eq!(parsed["pkv"]["sha256"], PKV_SHA256);
+    assert_eq!(
+        parsed["pkp"]["sha256"],
+        Sha256Digest::of(&read("batch-open.pkp")).to_string()
+    );
+}
