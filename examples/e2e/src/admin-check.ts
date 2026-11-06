@@ -22,8 +22,10 @@ async function getAdmin<S extends z.ZodType>(access: AdminAccess, path: string, 
   return schema.parse(await response.json());
 }
 
-// Check that each batch has the expected remaining units in the admin view. Return the
-// receipt counts and the observed source addresses of the session events.
+// Check that each batch has the expected remaining units in the admin view. Return, for each
+// batch, the committed session counters of the admin view (remaining, cumulative units, next
+// seq, state, receipt count), the gateway counters of the snapshot, and the observed source
+// addresses of the session events. The result has no token, key, or RPC parameter.
 export async function adminCheck(access: AdminAccess, batches: readonly string[], expected: readonly number[]): Promise<Record<string, Json>> {
   const details: Record<string, Json> = {};
   for (const [index, batchId] of batches.entries()) {
@@ -32,10 +34,22 @@ export async function adminCheck(access: AdminAccess, batches: readonly string[]
     if (detail.summary.session.remaining !== want) {
       throw new Error(`admin view of batch ${index + 1}: remaining ${detail.summary.session.remaining}, expected ${String(want)}`);
     }
-    details[`batch${index + 1}`] = { remaining: detail.summary.session.remaining, receipts: detail.receipts.length };
+    const { session } = detail.summary;
+    details[`batch${index + 1}`] = {
+      remaining: session.remaining,
+      unitsTotal: session.units_total,
+      nextSeq: session.next_seq,
+      state: session.state,
+      receipts: detail.receipts.length,
+      proofSize: detail.summary.proof_size,
+      verifyMs: detail.summary.verify_ms,
+    };
   }
   const snapshot = await getAdmin(access, "/admin/v1/snapshot", adminSnapshotSchema);
   const ours = snapshot.recent_events.filter((event) => event.batch_id !== null && batches.includes(event.batch_id));
+  // Counters since the gateway started. On a shared gateway they also count other clients.
+  details["gatewayCounters"] = { ...snapshot.counters };
+  details["gatewaySessions"] = { ...snapshot.sessions };
   details["demoIpLogging"] = snapshot.demo_ip_logging;
   details["sessionEventsSeen"] = ours.length;
   details["observedSourceIps"] = [...new Set(ours.map((event) => event.observed_ip))];
