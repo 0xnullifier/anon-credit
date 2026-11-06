@@ -28,13 +28,16 @@ export type SetupRequest = z.infer<typeof setupRequestSchema>;
 
 export const probeKindSchema = z.enum(["conflict", "bad_signature", "gap"]);
 
+// "auto": chunks through Nox, inline on the direct transport. "chunked": always chunks.
+export const openUploadChoiceSchema = z.enum(["auto", "chunked", "inline"]);
+
 export const pageRequestSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("setup"), setup: setupRequestSchema }),
   z.strictObject({ op: z.literal("createBatches"), n: z.number().int().min(1).max(100) }),
   z.strictObject({ op: z.literal("attachIssuance"), issuance: issuanceSchema }),
   z.strictObject({ op: z.literal("waitEligible"), batchId: z.string() }),
   z.strictObject({ op: z.literal("prepareOpen"), batchId: z.string() }),
-  z.strictObject({ op: z.literal("submitOpen"), batchId: z.string(), tamper: z.boolean() }),
+  z.strictObject({ op: z.literal("submitOpen"), batchId: z.string(), tamper: z.boolean(), upload: openUploadChoiceSchema }),
   z.strictObject({ op: z.literal("rpc"), batchId: z.string(), method: z.string(), params: z.array(z.json()), label: z.string().optional() }),
   z.strictObject({ op: z.literal("replay"), batchId: z.string(), label: z.string() }),
   z.strictObject({ op: z.literal("probe"), batchId: z.string(), kind: probeKindSchema }),
@@ -57,6 +60,20 @@ export const pageRequestSchema = z.discriminatedUnion("op", [
     bodyBytes: z.number().int().min(0).max(4_000_000),
     // POST only: send the body as text or as a ReadableStream.
     bodyKind: z.enum(["text", "stream"]),
+  }),
+  // Start a transport and send chunk envelopes (JSON texts) to an echo URL: first with
+  // `parallel` requests in flight, then the failed ones one at a time (3 attempts). One run
+  // for each value of `parallelRuns`. Used to measure the chunked open upload through Nox.
+  z.strictObject({
+    op: z.literal("chunkProbe"),
+    transport: transportChoiceSchema,
+    bootstrapRpcUrl: z.url().optional(),
+    readyTimeoutMs: z.number().int().positive(),
+    url: z.url(),
+    method: z.enum(["PUT", "POST"]),
+    isolationKey: z.string(),
+    envelopes: z.array(z.string().max(40_000)).min(1).max(256),
+    parallelRuns: z.array(z.number().int().min(1).max(16)).min(1).max(4),
   }),
 ]);
 export type PageRequest = z.input<typeof pageRequestSchema>;
@@ -119,12 +136,27 @@ export const prepareValueSchema = z.strictObject({
 });
 export type PrepareValue = z.infer<typeof prepareValueSchema>;
 
+export const uploadValueSchema = z.strictObject({
+  encoding: z.string(),
+  proofBytes: z.number(),
+  uploadBytes: z.number(),
+  chunks: z.number(),
+  parallel: z.number(),
+  fellBack: z.boolean(),
+  sends: z.number(),
+  chunkMs: z.array(z.number()),
+  totalMs: z.number(),
+});
+export type UploadValue = z.infer<typeof uploadValueSchema>;
+
 export const openValueSchema = z.strictObject({
   existing: z.boolean(),
   remaining: z.number(),
   nextSeq: z.string(),
   reprepared: z.boolean(),
   openMs: z.number(),
+  // Measurements of the chunked upload, or null for an inline proof.
+  upload: uploadValueSchema.nullable(),
 });
 
 export const rpcValueSchema = z.strictObject({
@@ -180,4 +212,34 @@ export const transportProbeValueSchema = z.strictObject({
   status: z.number(),
   headers: z.array(z.tuple([z.string(), z.string()])),
   bodyBytes: z.number(),
+});
+
+export const chunkSendSchema = z.strictObject({
+  index: z.number(),
+  phase: z.enum(["parallel", "sequential"]),
+  attempt: z.number(),
+  ok: z.boolean(),
+  status: z.number().nullable(),
+  ms: z.number(),
+  bodyBytes: z.number(),
+  // The echo response contains the chunk data unchanged.
+  echoed: z.boolean(),
+  error: z.string().nullable(),
+});
+export type ChunkSend = z.infer<typeof chunkSendSchema>;
+
+export const chunkRunSchema = z.strictObject({
+  parallel: z.number(),
+  sends: z.array(chunkSendSchema),
+  parallelPassMs: z.number(),
+  sequentialPassMs: z.number(),
+  totalMs: z.number(),
+  fellBack: z.boolean(),
+  allDelivered: z.boolean(),
+});
+export type ChunkRun = z.infer<typeof chunkRunSchema>;
+
+export const chunkProbeValueSchema = z.strictObject({
+  readyMs: z.number(),
+  runs: z.array(chunkRunSchema),
 });

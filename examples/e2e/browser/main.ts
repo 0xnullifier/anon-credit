@@ -9,7 +9,7 @@
 // prefix "[e2e]"; they never have secrets.
 
 import { createAnonTransport, directTransport, type Transport } from "@anon-credit/anon-transport";
-import { decodeBase64, encodeBase64, type OpenRequest, type SpendRequest } from "@anon-credit/protocol";
+import { decodeBase64, encodeBase64, type InlineOpenRequest, type SpendRequest } from "@anon-credit/protocol";
 import { createBatchOpenProver, type BatchOpenProver } from "@anon-credit/prover";
 import {
   SdkError,
@@ -17,11 +17,12 @@ import {
   createClient,
   indexedDbStorage,
   type Client,
+  type OpenUploadMode,
   type PreparedOpen,
   type SelectedRoot,
 } from "@anon-credit/sdk";
 import { z } from "zod";
-import { pageRequestSchema, type PageError, type SetupRequest } from "../src/page-api.ts";
+import { pageRequestSchema, type ChunkRun, type ChunkSend, type PageError, type SetupRequest } from "../src/page-api.ts";
 
 declare global {
   interface Window {
@@ -143,12 +144,12 @@ async function setupPage(setup: SetupRequest): Promise<Json> {
   };
 }
 
-async function submit(page: PageState, batchId: string, request: OpenRequest): Promise<Json> {
+async function submit(page: PageState, batchId: string, request: InlineOpenRequest, upload: OpenUploadMode): Promise<Json> {
   const start = performance.now();
   let reprepared = false;
-  let response;
+  let outcome;
   try {
-    response = await page.client.submitOpen(batchId, request);
+    outcome = await page.client.submitOpen(batchId, request, { upload });
   } catch (error) {
     const root = page.roots.get(batchId);
     if (!(error instanceof ServiceError && error.serviceCode === "proof_epoch_stale" && root !== undefined)) throw error;
@@ -156,7 +157,15 @@ async function submit(page: PageState, batchId: string, request: OpenRequest): P
     const prepared = await page.client.prepareOpen(batchId, root);
     page.prepared.set(batchId, prepared);
     reprepared = true;
-    response = await page.client.submitOpen(batchId, prepared.request);
+    outcome = await page.client.submitOpen(batchId, prepared.request, { upload });
+  }
+  const response = outcome.response;
+  const stats = outcome.upload;
+  if (stats !== null) {
+    progress(
+      `batch ${short(batchId)}: proof upload ${stats.uploadBytes} bytes (${stats.encoding}) in ${stats.chunks} chunks, ` +
+        `${stats.parallel} in flight, fallback ${stats.fellBack}, ${Math.round(stats.totalMs)} ms`,
+    );
   }
   return {
     existing: response.existing,
@@ -164,6 +173,62 @@ async function submit(page: PageState, batchId: string, request: OpenRequest): P
     nextSeq: response.session.next_seq,
     reprepared,
     openMs: performance.now() - start,
+    upload: stats === null ? null : { ...stats, chunkMs: [...stats.chunkMs] },
+  };
+}
+
+// Send each chunk envelope once with `parallel` requests in flight, then the failed ones one
+// at a time with up to 3 attempts.
+async function chunkRun(transport: Transport, url: string, method: "PUT" | "POST", isolationKey: string, envelopes: readonly string[], parallel: number): Promise<ChunkRun> {
+  const sends: ChunkSend[] = [];
+  const sendOne = async (index: number, phase: ChunkSend["phase"], attempt: number): Promise<boolean> => {
+    const body = envelopes[index] ?? "";
+    const data = z.object({ data: z.string() }).parse(JSON.parse(body)).data;
+    const sent = performance.now();
+    try {
+      const response = await transport.fetch(url, { method, headers: { "content-type": "application/json" }, body }, { isolationKey });
+      const text = await response.text();
+      const ok = response.ok;
+      sends.push({ index, phase, attempt, ok, status: response.status, ms: performance.now() - sent, bodyBytes: body.length, echoed: text.includes(data), error: null });
+      return ok;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sends.push({ index, phase, attempt, ok: false, status: null, ms: performance.now() - sent, bodyBytes: body.length, echoed: false, error: message });
+      return false;
+    }
+  };
+  const start = performance.now();
+  const failed: number[] = [];
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    while (next < envelopes.length) {
+      const index = next;
+      next += 1;
+      if (!(await sendOne(index, "parallel", 1))) failed.push(index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(parallel, envelopes.length) }, lane));
+  const parallelPassMs = performance.now() - start;
+  const sequentialStart = performance.now();
+  let delivered = envelopes.length - failed.length;
+  for (const index of [...failed].sort((a, b) => a - b)) {
+    for (let attempt = 2; attempt <= 4; attempt += 1) {
+      if (await sendOne(index, "sequential", attempt)) {
+        delivered += 1;
+        break;
+      }
+    }
+  }
+  const sequentialPassMs = performance.now() - sequentialStart;
+  progress(`chunk run (${parallel} in flight): ${delivered} of ${envelopes.length} delivered in ${Math.round(performance.now() - start)} ms`);
+  return {
+    parallel,
+    sends,
+    parallelPassMs,
+    sequentialPassMs,
+    totalMs: performance.now() - start,
+    fellBack: failed.length > 0,
+    allDelivered: delivered === envelopes.length,
   };
 }
 
@@ -218,7 +283,7 @@ async function handle(text: string): Promise<Json> {
       const prepared = page.prepared.get(request.batchId);
       if (prepared === undefined) throw new Error("prepareOpen has not run for this batch");
       const openRequest = request.tamper ? { ...prepared.request, proof: tamper(prepared.request.proof) } : prepared.request;
-      return submit(page, request.batchId, openRequest);
+      return submit(page, request.batchId, openRequest, request.upload);
     }
     case "rpc": {
       const page = requireState();
@@ -335,6 +400,29 @@ async function handle(text: string): Promise<Json> {
         const headers: [string, string][] = [];
         response.headers.forEach((value, name) => headers.push([name, value]));
         return { readyMs, fetchMs: performance.now() - fetchStart, status: response.status, headers, bodyBytes: body.byteLength };
+      } finally {
+        transport.close();
+      }
+    }
+    case "chunkProbe": {
+      const readyStart = performance.now();
+      const transport =
+        request.transport === "anon"
+          ? await createAnonTransport({
+              readyTimeoutMs: request.readyTimeoutMs,
+              ...(request.bootstrapRpcUrl === undefined ? {} : { bootstrapRpcUrl: request.bootstrapRpcUrl }),
+              onLog: (line) => {
+                if (line.level !== "debug") progress(`transport: ${line.text}`);
+              },
+            })
+          : directTransport();
+      const readyMs = performance.now() - readyStart;
+      try {
+        const runs: ChunkRun[] = [];
+        for (const parallel of request.parallelRuns) {
+          runs.push(await chunkRun(transport, request.url, request.method, request.isolationKey, request.envelopes, parallel));
+        }
+        return { readyMs, runs };
       } finally {
         transport.close();
       }
