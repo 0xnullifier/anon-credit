@@ -1,7 +1,7 @@
 {
   "gate": "browser proves, Rust verifies",
   "status": "passed",
-  "date": "2026-11-06T19:46:48.930Z",
+  "date": "2026-11-06T20:05:50.843Z",
   "machine": {
     "os": "darwin 25.5.0",
     "cpu": "Apple M4 Pro",
@@ -24,9 +24,15 @@
     "name": "provekit_sample",
     "numConstraints": 5136,
     "numWitnesses": 5224,
-    "numPublicInputs": 3
+    "numPublicInputs": 3,
+    "publicInputNames": [
+      "root",
+      "batch_id",
+      "epoch"
+    ]
   },
   "manifestSha256": "9d2837c0fcbf5401f150365dd1e1295f99545b7587dc999d722bd471d9882a71",
+  "pkvSha256": "2924a15365089797df27e664edb73d8db918b445b4a4cea02d5effc0ea8c5260",
   "manifest": {
     "format": "anon-credit/prover-manifest/v1",
     "circuit": "provekit_sample",
@@ -80,9 +86,16 @@
       }
     }
   },
+  "artifactSize": {
+    "pkpBytes": 131105,
+    "pkpGzipBytes": 131163,
+    "pkvBytes": 71371,
+    "wasmScalarBytes": 5178314,
+    "wasmThreadedBytes": 5342715
+  },
   "proofSize": {
-    "browserJsonBytes": 450276,
-    "browserJsonGzipBytes": 297310,
+    "browserJsonBytes": 451600,
+    "browserJsonGzipBytes": 298689,
     "nativeBinaryBytes": 293627
   },
   "artifactDownload": {
@@ -101,28 +114,28 @@
       "crossOriginIsolated": false,
       "threads": 1,
       "hardwareConcurrency": 12,
-      "loadMs": 62,
-      "coldFirstProofMs": 412.40000000596046,
+      "loadMs": 59.900000005960464,
+      "coldFirstProofMs": 435.40000000596046,
       "runs": [
         {
-          "durationMs": 310.2000000178814,
-          "witnessMs": 30,
-          "provingMs": 280.2000000178814,
-          "proofBytes": 450276,
+          "durationMs": 329,
+          "witnessMs": 29.400000005960464,
+          "provingMs": 299.59999999403954,
+          "proofBytes": 451600,
           "wasmMemoryBytes": 12124160
         },
         {
-          "durationMs": 252.5,
+          "durationMs": 252.7999999821186,
           "witnessMs": 2.4000000059604645,
-          "provingMs": 250.09999999403954,
-          "proofBytes": 448868,
+          "provingMs": 250.39999997615814,
+          "proofBytes": 449636,
           "wasmMemoryBytes": 12124160
         },
         {
-          "durationMs": 253.69999998807907,
-          "witnessMs": 2.9000000059604645,
-          "provingMs": 250.7999999821186,
-          "proofBytes": 452068,
+          "durationMs": 251,
+          "witnessMs": 2.5999999940395355,
+          "provingMs": 248.40000000596046,
+          "proofBytes": 451512,
           "wasmMemoryBytes": 12124160
         }
       ]
@@ -131,28 +144,28 @@
       "crossOriginIsolated": true,
       "threads": 8,
       "hardwareConcurrency": 12,
-      "loadMs": 69.94500002264977,
-      "coldFirstProofMs": 264.3349999785423,
+      "loadMs": 69.56000000238419,
+      "coldFirstProofMs": 266.4549999833107,
       "runs": [
         {
-          "durationMs": 154.04499998688698,
-          "witnessMs": 29.834999978542328,
-          "provingMs": 124.21000000834465,
-          "proofBytes": 450872,
+          "durationMs": 151.9050000011921,
+          "witnessMs": 29.19999998807907,
+          "provingMs": 122.70500001311302,
+          "proofBytes": 453048,
           "wasmMemoryBytes": 29097984
         },
         {
-          "durationMs": 89.65000000596046,
-          "witnessMs": 2.3550000190734863,
-          "provingMs": 87.29499998688698,
-          "proofBytes": 451768,
+          "durationMs": 87.46500000357628,
+          "witnessMs": 2.3799999952316284,
+          "provingMs": 85.08500000834465,
+          "proofBytes": 450616,
           "wasmMemoryBytes": 29097984
         },
         {
-          "durationMs": 88.90999999642372,
-          "witnessMs": 2.6299999952316284,
-          "provingMs": 86.2800000011921,
-          "proofBytes": 449848,
+          "durationMs": 88.50500002503395,
+          "witnessMs": 2.439999997615814,
+          "provingMs": 86.06500002741814,
+          "proofBytes": 451300,
           "wasmMemoryBytes": 29097984
         }
       ]
@@ -163,40 +176,64 @@
       "scalar": {
         "valid": {
           "result": "valid",
-          "proof_bytes": 450276,
-          "verify_ms": 12.981
+          "proof_bytes": 451600,
+          "verify_ms": 11.786
         },
         "tamperedRejected": "error: proof rejected: Joint WHIR verification failed",
-        "wrongExpectedInputRejected": "error: public input 2 is not the expected value",
-        "alteredProofInputRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+        "perPublicInput": {
+          "root": {
+            "wrongExpectedValueRejected": "error: public input 0 is not the expected value",
+            "alteredProofValueRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+          },
+          "batch_id": {
+            "wrongExpectedValueRejected": "error: public input 1 is not the expected value",
+            "alteredProofValueRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+          },
+          "epoch": {
+            "wrongExpectedValueRejected": "error: public input 2 is not the expected value",
+            "alteredProofValueRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+          }
+        }
       },
       "threaded": {
         "valid": {
           "result": "valid",
-          "proof_bytes": 450872,
-          "verify_ms": 9.591
+          "proof_bytes": 453048,
+          "verify_ms": 9.509
         },
         "tamperedRejected": "error: proof rejected: Joint WHIR verification failed",
-        "wrongExpectedInputRejected": "error: public input 2 is not the expected value",
-        "alteredProofInputRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+        "perPublicInput": {
+          "root": {
+            "wrongExpectedValueRejected": "error: public input 0 is not the expected value",
+            "alteredProofValueRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+          },
+          "batch_id": {
+            "wrongExpectedValueRejected": "error: public input 1 is not the expected value",
+            "alteredProofValueRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+          },
+          "epoch": {
+            "wrongExpectedValueRejected": "error: public input 2 is not the expected value",
+            "alteredProofValueRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+          }
+        }
       }
     },
     "benchBrowserProofOneThread": {
       "result": "valid",
       "verify_ms": {
-        "min": 12.671,
-        "median": 12.893,
-        "mean": 12.919,
-        "max": 13.531
+        "min": 12.989,
+        "median": 13.446,
+        "mean": 13.434,
+        "max": 13.936
       }
     },
     "benchBrowserProofAllThreads": {
       "result": "valid",
       "verify_ms": {
-        "min": 8.679,
-        "median": 8.918,
-        "mean": 8.948,
-        "max": 10.318
+        "min": 8.843,
+        "median": 9.183,
+        "mean": 9.217,
+        "max": 10.336
       }
     }
   }

@@ -1,0 +1,53 @@
+{
+  "format": "anon-credit/prover-manifest/v1",
+  "circuit": "batch_open",
+  "provekit": {
+    "repo": "https://github.com/worldfnd/provekit",
+    "rev": "201b7b639f5dd5632c01561fcb2a96c2fc8851f3",
+    "witnessMode": "zk",
+    "hash": "skyscraper"
+  },
+  "noir": "1.0.0-beta.26",
+  "numPublicInputs": 10,
+  "pkp": {
+    "path": "batch-open.pkp",
+    "sha256": "be804ed5936ffc4b82509136371bc0f4b6d7b4781188990595d20d3e9636b2e9",
+    "bytes": 326077
+  },
+  "pkv": {
+    "path": "batch-open.pkv",
+    "sha256": "c8b4fb4722bb6d926d73112223865bd2756413f6f8085e549a90dd16a8aef6d4",
+    "bytes": 178694
+  },
+  "wasm": {
+    "scalar": {
+      "glue": {
+        "path": "../provekit-wasm/scalar/provekit_wasm.js",
+        "sha256": "c132ec57c6818db92334d632d2c9fb1fe10c8c4bd990e38bccd0e4fe51779663",
+        "bytes": 31435
+      },
+      "binary": {
+        "path": "../provekit-wasm/scalar/provekit_wasm_bg.wasm",
+        "sha256": "56ad91baca448863bee310d936884b49de49ca00af8acdd95c796f03f3c5a2f6",
+        "bytes": 5178314
+      }
+    },
+    "threaded": {
+      "glue": {
+        "path": "../provekit-wasm/threaded/provekit_wasm.js",
+        "sha256": "aad7e2a1f46f2efb029633af3f7f2dd5091959dd343ecfec73710c5a2651911d",
+        "bytes": 31011
+      },
+      "binary": {
+        "path": "../provekit-wasm/threaded/provekit_wasm_bg.wasm",
+        "sha256": "a8af80f881865e099d7debb0c7c772b34172db637a7ae23e1488bf92eed56aca",
+        "bytes": 5342715
+      },
+      "helper": {
+        "path": "../provekit-wasm/threaded/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.js",
+        "sha256": "e4615d5bbbd6efc303810bbe56f82ca0e9c89b1879c07a10c2d667549a1b5f8f",
+        "bytes": 4563
+      }
+    }
+  }
+}
