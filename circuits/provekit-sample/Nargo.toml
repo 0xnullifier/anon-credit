@@ -1,0 +1,6 @@
+[package]
+name = "provekit_sample"
+type = "bin"
+authors = ["anon-credit"]
+
+[dependencies]

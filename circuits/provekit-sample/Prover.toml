@@ -1,0 +1,8 @@
+# Sample witness for the ProveKit feasibility circuit. These are test values, not secrets.
+secret = "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd"
+expiry = "1000"
+leaf_index = "42435"
+siblings = ["100", "101", "102", "103", "104", "105", "106", "107", "108", "109", "110", "111", "112", "113", "114", "115"]
+root = "0x2defe77ad67d41ed53118ca13e97d82c88a0796fc3adb8858509598d115eccb1"
+batch_id = "0x00292c827d85a6f524c3dc038c7d1fef7c3a63d666fc46b710ff5c98eeed772e"
+epoch = "999"
