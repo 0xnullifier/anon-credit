@@ -1,0 +1,59 @@
+{
+  "description": "Single source of the circuit domain tags and circuit constants. Each tag value is the big-endian integer of the ASCII text bytes. The text is at most 27 bytes, so value * 2^32 + 31 is less than the BN254 scalar field modulus. Rust, TypeScript, and Noir copy these values; their tests compare them with this file.",
+  "field_modulus": "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+  "tags": [
+    {
+      "name": "commitment",
+      "text": "anon-credit/v1/commitment",
+      "value": "0x00000000000000616e6f6e2d6372656469742f76312f636f6d6d69746d656e74",
+      "use": "c = H(DOM_COMMITMENT, deployment_id_hi, deployment_id_lo, k_hi, k_lo)"
+    },
+    {
+      "name": "leaf",
+      "text": "anon-credit/v1/leaf",
+      "value": "0x00000000000000000000000000616e6f6e2d6372656469742f76312f6c656166",
+      "use": "leaf = H(DOM_LEAF, c, K, expiry)"
+    },
+    {
+      "name": "batch_id",
+      "text": "anon-credit/v1/batch-id",
+      "value": "0x000000000000000000616e6f6e2d6372656469742f76312f62617463682d6964",
+      "use": "batch_id = H(DOM_BATCH_ID, deployment_id_hi, deployment_id_lo, k_hi, k_lo)"
+    },
+    {
+      "name": "binding",
+      "text": "anon-credit/v1/binding",
+      "value": "0x00000000000000000000616e6f6e2d6372656469742f76312f62696e64696e67",
+      "use": "binding = H(DOM_BINDING, gateway_id_hi, gateway_id_lo, session_pub_hi, session_pub_lo)"
+    },
+    {
+      "name": "mmr_leaf",
+      "text": "anon-credit/v1/mmr-leaf",
+      "value": "0x000000000000000000616e6f6e2d6372656469742f76312f6d6d722d6c656166",
+      "use": "leaf_node = H(DOM_MMR_LEAF, leaf)"
+    },
+    {
+      "name": "mmr_node",
+      "text": "anon-credit/v1/mmr-node",
+      "value": "0x000000000000000000616e6f6e2d6372656469742f76312f6d6d722d6e6f6465",
+      "use": "node = H(DOM_MMR_NODE * 2^32 + height, left, right); height is the parent height"
+    },
+    {
+      "name": "mmr_root",
+      "text": "anon-credit/v1/mmr-root",
+      "value": "0x000000000000000000616e6f6e2d6372656469742f76312f6d6d722d726f6f74",
+      "use": "root = H(DOM_MMR_ROOT, leaf_count, slot[31], slot[30], ..., slot[0])"
+    }
+  ],
+  "circuit_id": {
+    "text": "anon-credit/v1/batch-open",
+    "value": "0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e",
+    "use": "First public input of the batch-open circuit. It names protocol version 1 and the circuit statement."
+  },
+  "constants": {
+    "batch_units_k": 100,
+    "max_height": 32,
+    "max_peaks": 32,
+    "max_leaves": 4294967295
+  }
+}
