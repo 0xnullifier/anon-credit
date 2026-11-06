@@ -5,6 +5,7 @@
 
 use crate::app::Limits;
 use crate::peer::DEFAULT_FORWARDED_HEADER;
+use crate::upload::UploadLimits;
 use anon_credit_protocol::settings::{
     CommonSettings, GATEWAY_ADMIN_PORT, GATEWAY_PUBLIC_PORT, SettingsError, presence, read_bind,
     read_bool, read_optional, read_parsed,
@@ -96,7 +97,7 @@ pub struct GatewaySettings {
     /// Interval between root refreshes (`GATEWAY_ROOT_POLL_SECONDS`).
     pub root_poll_seconds: u64,
     /// Resource limits (`GATEWAY_*_LIMIT_BYTES`, `GATEWAY_UPSTREAM_TIMEOUT_MS`,
-    /// `GATEWAY_PROOF_CONCURRENCY`, `GATEWAY_PROOF_QUEUE_DEPTH`).
+    /// `GATEWAY_PROOF_CONCURRENCY`, `GATEWAY_PROOF_QUEUE_DEPTH`, `GATEWAY_OPEN_UPLOAD_*`).
     pub limits: Limits,
 }
 
@@ -143,6 +144,50 @@ fn read_size(
     usize::try_from(value).map_err(|_| invalid(name, "value is too large"))
 }
 
+/// Largest value of `GATEWAY_OPEN_UPLOAD_MAX_BYTES`: the sidecar proof limit (4 MiB).
+pub const MAX_OPEN_UPLOAD_BYTES: usize = 4 * 1024 * 1024;
+
+fn read_upload_limits(
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<UploadLimits, SettingsError> {
+    let defaults = UploadLimits::default();
+    let max_bytes = read_size(lookup, "GATEWAY_OPEN_UPLOAD_MAX_BYTES", defaults.max_bytes)?;
+    if max_bytes > MAX_OPEN_UPLOAD_BYTES {
+        return Err(invalid(
+            "GATEWAY_OPEN_UPLOAD_MAX_BYTES",
+            "must be at most 4194304 (the verifier proof limit)",
+        ));
+    }
+    let max_chunks = u32::try_from(read_positive(
+        lookup,
+        "GATEWAY_OPEN_UPLOAD_MAX_CHUNKS",
+        u64::from(defaults.max_chunks),
+    )?)
+    .map_err(|_| invalid("GATEWAY_OPEN_UPLOAD_MAX_CHUNKS", "value is too large"))?;
+    let max_pending_bytes = read_size(
+        lookup,
+        "GATEWAY_OPEN_UPLOAD_MAX_PENDING_BYTES",
+        defaults.max_pending_bytes,
+    )?;
+    if max_pending_bytes < max_bytes {
+        return Err(invalid(
+            "GATEWAY_OPEN_UPLOAD_MAX_PENDING_BYTES",
+            "must be at least GATEWAY_OPEN_UPLOAD_MAX_BYTES",
+        ));
+    }
+    Ok(UploadLimits {
+        max_bytes,
+        max_chunks,
+        ttl_secs: read_positive(lookup, "GATEWAY_OPEN_UPLOAD_TTL_SECONDS", defaults.ttl_secs)?,
+        max_pending: read_size(
+            lookup,
+            "GATEWAY_OPEN_UPLOAD_MAX_PENDING",
+            defaults.max_pending,
+        )?,
+        max_pending_bytes,
+    })
+}
+
 fn read_limits(lookup: &impl Fn(&str) -> Option<String>) -> Result<Limits, SettingsError> {
     let defaults = Limits::default();
     Ok(Limits {
@@ -178,6 +223,7 @@ fn read_limits(lookup: &impl Fn(&str) -> Option<String>) -> Result<Limits, Setti
         )?,
         response_retention_secs: defaults.response_retention_secs,
         batch_lock_wait: defaults.batch_lock_wait,
+        upload: read_upload_limits(lookup)?,
     })
 }
 
@@ -293,6 +339,14 @@ impl GatewaySettings {
             limits.proof_verify_concurrency,
             limits.proof_queue_depth
         ));
+        lines.push(format!(
+            "open uploads: {} B each, {} chunks, ttl {} s, {} pending, {} B pending",
+            limits.open_upload_max_bytes,
+            limits.open_upload_max_chunks,
+            limits.open_upload_ttl_seconds,
+            limits.open_upload_max_pending,
+            limits.open_upload_max_pending_bytes
+        ));
         lines
     }
 }
@@ -388,6 +442,48 @@ mod tests {
             GatewaySettings::from_lookup(&lookup_from(&[("GATEWAY_ROOT_SOURCE", "issuer")]))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn reads_open_upload_limits() {
+        let defaults = GatewaySettings::from_lookup(&lookup_from(&[])).unwrap();
+        assert_eq!(defaults.limits.upload, UploadLimits::default());
+        let api = defaults.limits.to_api();
+        assert_eq!(api.open_upload_max_bytes, 4_194_304);
+        assert_eq!(api.open_upload_max_chunks, 256);
+        assert_eq!(api.open_upload_ttl_seconds, 600);
+        assert_eq!(api.open_upload_max_pending, 1000);
+        assert_eq!(api.open_upload_max_pending_bytes, 536_870_912);
+        assert_eq!(api.open_upload_chunk_bytes, 24_576);
+        assert_eq!(api.open_upload_chunk_body_bytes, 40_000);
+        let settings = GatewaySettings::from_lookup(&lookup_from(&[
+            ("GATEWAY_OPEN_UPLOAD_MAX_BYTES", "1000000"),
+            ("GATEWAY_OPEN_UPLOAD_MAX_CHUNKS", "64"),
+            ("GATEWAY_OPEN_UPLOAD_TTL_SECONDS", "30"),
+            ("GATEWAY_OPEN_UPLOAD_MAX_PENDING", "10"),
+            ("GATEWAY_OPEN_UPLOAD_MAX_PENDING_BYTES", "2000000"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            settings.limits.upload,
+            UploadLimits {
+                max_bytes: 1_000_000,
+                max_chunks: 64,
+                ttl_secs: 30,
+                max_pending: 10,
+                max_pending_bytes: 2_000_000,
+            }
+        );
+        for pairs in [
+            &[("GATEWAY_OPEN_UPLOAD_MAX_BYTES", "4194305")][..],
+            &[("GATEWAY_OPEN_UPLOAD_MAX_CHUNKS", "0")][..],
+            &[("GATEWAY_OPEN_UPLOAD_MAX_PENDING_BYTES", "1000")][..],
+        ] {
+            assert!(
+                GatewaySettings::from_lookup(&lookup_from(pairs)).is_err(),
+                "{pairs:?}"
+            );
+        }
     }
 
     #[test]
