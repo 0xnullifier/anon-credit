@@ -32,3 +32,10 @@ export const WORKERS: Readonly<Record<WorkerId, WorkerEntry>> = {
 export const BOOTSTRAP_RPC_URLS: Readonly<Record<number, string>> = {
   [NOX_SPECIFIER_CHAIN_ID]: "https://ethereum-sepolia-rpc.publicnode.com",
 };
+
+// Largest request (headers and body) that passed through the Nox worker in our probe
+// (examples/e2e/nox-probe.ts, 2026-11-07): a 48,000-byte body passed, a 60,000-byte body
+// failed with "TLS record buffering ... failed to write whole buffer" (protocol-error), also as
+// a stream body. An open request with a ProveKit proof is about 640 KB, so it does not pass.
+// Spend and status requests (about 1 KB) pass. This is a measurement, not a protocol limit.
+export const NOX_MEASURED_MAX_BODY_BYTES = 48_000;

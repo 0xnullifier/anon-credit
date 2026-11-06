@@ -9,7 +9,8 @@ export interface TransportRequestInit {
   readonly method: "GET" | "POST";
   readonly headers?: Readonly<Record<string, string>>;
   // JSON text. The SDK keeps the exact bytes of signed values inside the JSON envelope.
-  readonly body?: string;
+  // A stream body is also accepted (the harness transfers it to the worker as a stream).
+  readonly body?: string | ReadableStream<Uint8Array>;
 }
 
 export interface TransportFetchOptions {

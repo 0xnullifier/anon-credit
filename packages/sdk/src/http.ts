@@ -17,7 +17,8 @@ export async function send(endpoint: Endpoint, path: string, init: TransportRequ
   try {
     return await endpoint.transport.fetch(`${endpoint.baseUrl}${path}`, init, { isolationKey });
   } catch (error) {
-    throw new SdkError("transport_failed", `request to ${path} failed: ${messageOf(error)}`);
+    const size = typeof init.body === "string" ? ` (body ${init.body.length} bytes)` : "";
+    throw new SdkError("transport_failed", `request to ${path}${size} failed: ${messageOf(error)}`);
   }
 }
 

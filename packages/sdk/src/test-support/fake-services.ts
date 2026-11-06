@@ -313,13 +313,14 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
     isolationKeys: () => [...keys],
     close: () => undefined,
     fetch: async (url, init, options) => {
+      const body = typeof init.body === "string" || init.body === undefined ? init.body : await new Response(init.body).text();
       if (hooks.transportDown) throw new TransportError("network_error", "fake: the transport is down");
       const parsed = new URL(url);
       if (!keys.includes(options.isolationKey)) keys.push(options.isolationKey);
-      calls.push({ method: init.method, path: parsed.pathname, isolationKey: options.isolationKey, body: init.body });
+      calls.push({ method: init.method, path: parsed.pathname, isolationKey: options.isolationKey, body });
       switch (parsed.origin) {
         case GATEWAY_URL:
-          return gateway(init.method, parsed.pathname, init.body);
+          return gateway(init.method, parsed.pathname, body);
         case ISSUER_URL:
           return issuer(parsed.pathname, parsed.searchParams);
         default:
