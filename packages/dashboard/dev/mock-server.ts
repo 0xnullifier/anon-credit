@@ -37,6 +37,8 @@ const DEFAULT_ORIGINS = ["http://localhost:5174", "http://127.0.0.1:5174"];
 const MAX_EVENTS = 10_000;
 const RESPONSE_RETENTION_SECONDS = 60;
 const KEEP_ALIVE_MS = 15_000;
+// Receipts in a session view: SESSION_RECEIPTS of crates/gateway/src/admin.rs.
+const SESSION_RECEIPTS = 200;
 
 export interface MockOptions {
   readonly adminPort?: number;
@@ -96,6 +98,8 @@ export function loadFixture(path: URL | string = DEFAULT_FIXTURE): Fixture {
   if (typeof epochSeconds !== "number" || epochSeconds <= 0) {
     return fail("gateway.epoch_seconds is not a positive number");
   }
+  const prices = pricesResponseSchema.parse(root["prices"]);
+  const roots = rootsResponseSchema.parse(root["roots"]);
   const zero = { open_received: "0", open_rejected: "0", sessions_opened: "0", rpc_received: "0", rpc_completed: "0" };
   const base = adminSnapshotSchema.parse({
     status: gateway["status"],
@@ -105,9 +109,16 @@ export function loadFixture(path: URL | string = DEFAULT_FIXTURE): Fixture {
     deployment_id: gateway["deployment_id"],
     gateway_id: gateway["gateway_id"],
     upstream_chain_id: gateway["upstream_chain_id"],
+    epoch_seconds: epochSeconds,
+    circuit_id: gateway["circuit_id"],
+    verifier_artifact_hash: gateway["verifier_artifact_hash"],
     demo_ip_logging: true,
     verifier: gateway["verifier"],
+    price_table_hash: prices.price_table_hash,
+    price_table: prices.price_table,
     roots: gateway["roots"],
+    root_window_epochs: roots.root_window_epochs,
+    accepted_roots: roots.roots,
     counters: { ...zero, rpc_replayed: "0", rpc_rejected: "0", upstream_failed: "0", storage_failed: "0", units_charged: "0" },
     sessions: { active: "0", exhausted: "0", expired: "0", units_charged: "0" },
     recent_events: [],
@@ -138,8 +149,8 @@ export function loadFixture(path: URL | string = DEFAULT_FIXTURE): Fixture {
     base,
     epochSeconds,
     sessions,
-    prices: pricesResponseSchema.parse(root["prices"]),
-    roots: rootsResponseSchema.parse(root["roots"]),
+    prices,
+    roots,
     script,
   };
 }
@@ -390,7 +401,7 @@ export class MockGateway {
     if (record === undefined) {
       return null;
     }
-    return sessionDetailSchema.parse({ summary: record.summary, receipts: this.#withRetention(record.receipts).slice(0, 50) });
+    return sessionDetailSchema.parse({ summary: record.summary, receipts: this.#withRetention(record.receipts).slice(0, SESSION_RECEIPTS) });
   }
 
   roots(): RootsResponse {
