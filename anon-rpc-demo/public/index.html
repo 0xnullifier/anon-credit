@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anon-RPC Demo</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { --bg: #fff; --fg: #111; --muted: #666; --ok: #0a7d32; --err: #b00020; --line: #ddd; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; --muted: #999; --ok: #4cc27a; --err: #ff6b7f; --line: #333; } }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.5 ui-monospace, Menlo, monospace; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    nav a { margin-right: 12px; color: inherit; }
+    #log { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; white-space: pre-wrap; word-break: break-all; }
+    .stage { color: var(--fg); } .worker { color: var(--muted); } .ok { color: var(--ok); font-weight: bold; } .err { color: var(--err); font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Anon-RPC demo</h1>
+  <nav>Worker:
+    <a href="?worker=passthrough">passthrough</a>
+    <a href="?worker=nox">nox</a>
+    <a href="?worker=nym">nym</a>
+    <a href="?worker=tor-js">tor-js</a>
+  </nav>
+  <div id="log"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

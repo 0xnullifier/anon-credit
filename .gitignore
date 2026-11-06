@@ -49,3 +49,6 @@ test-results/
 .DS_Store
 .idea/
 .vscode/
+
+# Reference demo build output
+anon-rpc-demo/public/app.js

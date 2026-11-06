@@ -1,0 +1,19 @@
+{
+  "name": "anon-rpc-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bare-bones Anon-RPC browser demo: an anonymized eth_blockNumber through @anon-rpc/browser-harness.",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/app.js --bundle --format=esm --target=es2022 --outfile=public/app.js",
+    "start": "npm run build && node server.mjs",
+    "verify": "npm run build && node verify.mjs"
+  },
+  "dependencies": {
+    "@anon-rpc/browser-harness": "0.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.65.0"
+  }
+}
