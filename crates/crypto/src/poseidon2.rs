@@ -90,7 +90,12 @@ pub fn permutation(state: [FieldElement; WIDTH]) -> [FieldElement; WIDTH] {
 pub fn hash(inputs: &[FieldElement]) -> FieldElement {
     let two_pow_64 = Fr::from(1u128 << 64);
     let length = Fr::from(inputs.len() as u64);
-    let mut state = [Fr::from(0u64), Fr::from(0u64), Fr::from(0u64), length * two_pow_64];
+    let mut state = [
+        Fr::from(0u64),
+        Fr::from(0u64),
+        Fr::from(0u64),
+        length * two_pow_64,
+    ];
     let mut cache = [Fr::from(0u64); RATE];
     let mut cache_size = 0usize;
     for input in inputs {
@@ -120,6 +125,31 @@ mod tests {
 
     fn fe(text: &str) -> FieldElement {
         FieldElement::from_hex(text).unwrap_or_default()
+    }
+
+    #[test]
+    fn constants_match_params_fixture() {
+        #[derive(serde::Deserialize)]
+        struct Params {
+            rounds_f: usize,
+            rounds_p: usize,
+            internal_matrix_diagonal: [FieldElement; 4],
+            round_constants: Vec<[FieldElement; 4]>,
+        }
+        let text = include_str!("../../../fixtures/protocol/poseidon2-params.json");
+        let params: Result<Params, _> = serde_json::from_str(text);
+        assert!(params.is_ok());
+        let Ok(params) = params else { return };
+        assert_eq!((params.rounds_f, params.rounds_p), (ROUNDS_F, ROUNDS_P));
+        assert_eq!(
+            params.internal_matrix_diagonal,
+            INTERNAL_MATRIX_DIAGONAL.map(FieldElement::from_fr)
+        );
+        let constants: Vec<[FieldElement; 4]> = ROUND_CONSTANTS
+            .iter()
+            .map(|row| row.map(FieldElement::from_fr))
+            .collect();
+        assert_eq!(params.round_constants, constants);
     }
 
     #[test]
