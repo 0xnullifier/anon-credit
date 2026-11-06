@@ -61,9 +61,10 @@ export const pageRequestSchema = z.discriminatedUnion("op", [
     // POST only: send the body as text or as a ReadableStream.
     bodyKind: z.enum(["text", "stream"]),
   }),
-  // Start a transport and send chunk envelopes (JSON texts) to an echo URL: first with
-  // `parallel` requests in flight, then the failed ones one at a time (3 attempts). One run
-  // for each value of `parallelRuns`. Used to measure the chunked open upload through Nox.
+  // Start a transport, make the PUT /v1/open/chunks envelopes of `upload` (base64 of gzip proof
+  // bytes) with the SDK, and send them to an echo URL: first with `parallel` requests in
+  // flight, then the failed ones one at a time (3 more attempts). One run for each value of
+  // `parallelRuns`. Used to measure the chunked open upload through Nox.
   z.strictObject({
     op: z.literal("chunkProbe"),
     transport: transportChoiceSchema,
@@ -72,7 +73,8 @@ export const pageRequestSchema = z.discriminatedUnion("op", [
     url: z.url(),
     method: z.enum(["PUT", "POST"]),
     isolationKey: z.string(),
-    envelopes: z.array(z.string().max(40_000)).min(1).max(256),
+    batchId: z.string(),
+    upload: z.string().min(1).max(8_000_000),
     parallelRuns: z.array(z.number().int().min(1).max(16)).min(1).max(4),
   }),
 ]);
@@ -241,5 +243,7 @@ export type ChunkRun = z.infer<typeof chunkRunSchema>;
 
 export const chunkProbeValueSchema = z.strictObject({
   readyMs: z.number(),
+  chunks: z.number(),
+  largestEnvelopeBytes: z.number(),
   runs: z.array(chunkRunSchema),
 });

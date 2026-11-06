@@ -16,6 +16,7 @@ import {
   ServiceError,
   createClient,
   indexedDbStorage,
+  planUpload,
   type Client,
   type OpenUploadMode,
   type PreparedOpen,
@@ -418,11 +419,13 @@ async function handle(text: string): Promise<Json> {
           : directTransport();
       const readyMs = performance.now() - readyStart;
       try {
+        const plan = planUpload(request.batchId, { bytes: decodeBase64(request.upload), encoding: "json+gzip" });
+        const envelopes = plan.chunks.map((chunk) => JSON.stringify(chunk));
         const runs: ChunkRun[] = [];
         for (const parallel of request.parallelRuns) {
-          runs.push(await chunkRun(transport, request.url, request.method, request.isolationKey, request.envelopes, parallel));
+          runs.push(await chunkRun(transport, request.url, request.method, request.isolationKey, envelopes, parallel));
         }
-        return { readyMs, runs };
+        return { readyMs, chunks: envelopes.length, largestEnvelopeBytes: Math.max(...envelopes.map((text) => text.length)), runs };
       } finally {
         transport.close();
       }
