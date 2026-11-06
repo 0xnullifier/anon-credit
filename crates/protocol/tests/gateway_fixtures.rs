@@ -8,9 +8,9 @@
 use anon_credit_crypto::verify_ed25519;
 use anon_credit_protocol::admin::{AdminSnapshot, GatewayEvent, SessionDetail};
 use anon_credit_protocol::api::{
-    DemoPeerResponse, GatewayConfigResponse, GatewayErrorBody, OpenRequest, OpenResponse,
-    PricesResponse, RootsResponse, SPEND_RESPONSE_HEADERS, SpendRequest, StatusRequest,
-    StatusResponse,
+    DemoPeerResponse, GatewayConfigResponse, GatewayErrorBody, OpenChunkRequest, OpenChunkResponse,
+    OpenRequest, OpenResponse, PricesResponse, RootsResponse, SPEND_RESPONSE_HEADERS, SpendRequest,
+    StatusRequest, StatusResponse,
 };
 use anon_credit_protocol::hex_bytes::{decode_fixed, encode};
 use anon_credit_protocol::{
@@ -187,9 +187,12 @@ fn parse_as(kind: &str, value: &Value) -> Result<(), String> {
     let base = kind.trim_end_matches("_without_receipt");
     let base = base.trim_end_matches("_with_receipt");
     let base = base.trim_end_matches("_demo");
+    let base = base.trim_end_matches("_upload");
     match base {
         "open_request" => round_trip::<OpenRequest>(value),
         "open_response" => round_trip::<OpenResponse>(value),
+        "open_chunk_request" => round_trip::<OpenChunkRequest>(value),
+        "open_chunk_response" => round_trip::<OpenChunkResponse>(value),
         "spend_request" => round_trip::<SpendRequest>(value),
         "status_request" => round_trip::<StatusRequest>(value),
         "status_response" => round_trip::<StatusResponse>(value),

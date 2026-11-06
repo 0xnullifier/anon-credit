@@ -28,9 +28,87 @@ pub const HEADER_REPLAYED: &str = "x-anon-replayed";
 /// All `X-Anon-*` response headers. CORS must expose them.
 pub const SPEND_RESPONSE_HEADERS: [&str; 3] = [HEADER_REMAINING, HEADER_NEXT_SEQ, HEADER_REPLAYED];
 
-/// `POST /v1/open` request body.
+/// Largest raw data of one `PUT /v1/open/chunks` chunk: 24 KiB.
+pub const OPEN_CHUNK_MAX_BYTES: usize = 24 * 1024;
+
+/// Largest `PUT /v1/open/chunks` body. A chunk with [`OPEN_CHUNK_MAX_BYTES`] of data is
+/// about 33,000 bytes of JSON. The Nox worker refuses bodies above about 48,000 bytes.
+pub const OPEN_CHUNK_BODY_LIMIT_BYTES: usize = 40_000;
+
+/// Encoding of the proof bytes of a chunked upload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ProofEncoding {
+    /// Binary ProveKit proof (`.np`). The gateway sends the bytes to the verifier as they are.
+    #[serde(rename = "np")]
+    Np,
+    /// JSON ProveKit proof, as the browser prover emits it. Sent to the verifier as it is.
+    #[serde(rename = "json")]
+    Json,
+    /// JSON ProveKit proof in gzip. The gateway decompresses it with a size limit.
+    #[serde(rename = "json+gzip")]
+    JsonGzip,
+}
+
+impl ProofEncoding {
+    /// Wire name of the encoding.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            ProofEncoding::Np => "np",
+            ProofEncoding::Json => "json",
+            ProofEncoding::JsonGzip => "json+gzip",
+        }
+    }
+}
+
+/// Reference to a complete chunked proof upload (`PUT /v1/open/chunks`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProofUpload {
+    /// SHA-256 of the uploaded bytes (after the encoding, before decompression).
+    pub proof_sha256: Bytes32,
+    /// Length of the uploaded bytes.
+    pub total_bytes: u32,
+    /// Encoding of the uploaded bytes.
+    pub proof_encoding: ProofEncoding,
+}
+
+/// `PUT /v1/open/chunks` request body: one chunk of a proof upload.
+///
+/// The gateway keys an upload by `(batch_id, proof_sha256)`. The chunks can arrive in any
+/// order. The proof bytes are the chunk data in `chunk_index` order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct OpenChunkRequest {
+    /// Public batch ID of the open request that uses the upload.
+    pub batch_id: Bytes32,
+    /// SHA-256 of all uploaded bytes.
+    pub proof_sha256: Bytes32,
+    /// Length of all uploaded bytes.
+    pub total_bytes: u32,
+    /// Index of this chunk, from 0.
+    pub chunk_index: u32,
+    /// Number of chunks of the upload.
+    pub chunk_count: u32,
+    /// Chunk bytes: 1 to [`OPEN_CHUNK_MAX_BYTES`] bytes.
+    pub data: Base64Bytes,
+}
+
+/// `PUT /v1/open/chunks` response body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenChunkResponse {
+    /// Number of different chunks that the gateway has for the upload.
+    pub received_chunks: u32,
+    /// `true` if all chunks are present and the SHA-256 and the length agree.
+    pub complete: bool,
+}
+
+/// `POST /v1/open` request body.
+///
+/// The request has exactly one of `proof` (inline proof bytes) and `proof_upload` (a
+/// complete chunked upload). The open signature does not cover the proof.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "OpenRequestWire")]
 pub struct OpenRequest {
     /// Protocol version. Must equal [`crate::PROTOCOL_VERSION`].
     pub protocol_version: u16,
@@ -50,13 +128,79 @@ pub struct OpenRequest {
     pub session_pub: Bytes32,
     /// Hash of the current gateway price table.
     pub price_table_hash: Bytes32,
-    /// Proof bytes.
-    pub proof: Base64Bytes,
+    /// Inline proof bytes. Absent if `proof_upload` is present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<Base64Bytes>,
+    /// Reference to a chunked proof upload. Absent if `proof` is present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_upload: Option<ProofUpload>,
     /// Ed25519 signature over [`OpenMessage::digest`] with the session key.
     pub signature: Signature64,
 }
 
+/// The source of the proof bytes of an open request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProofSource<'a> {
+    /// Inline proof bytes.
+    Inline(&'a [u8]),
+    /// A chunked upload.
+    Upload(&'a ProofUpload),
+}
+
+/// Wire form of [`OpenRequest`]. Deserialization checks that exactly one proof source is set.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpenRequestWire {
+    protocol_version: u16,
+    deployment_id: Bytes32,
+    gateway_id: Bytes32,
+    batch_id: Bytes32,
+    root: Bytes32,
+    leaf_count: u32,
+    proof_epoch: DecimalU64,
+    session_pub: Bytes32,
+    price_table_hash: Bytes32,
+    #[serde(default)]
+    proof: Option<Base64Bytes>,
+    #[serde(default)]
+    proof_upload: Option<ProofUpload>,
+    signature: Signature64,
+}
+
+impl TryFrom<OpenRequestWire> for OpenRequest {
+    type Error = &'static str;
+
+    fn try_from(wire: OpenRequestWire) -> Result<Self, Self::Error> {
+        let request = OpenRequest {
+            protocol_version: wire.protocol_version,
+            deployment_id: wire.deployment_id,
+            gateway_id: wire.gateway_id,
+            batch_id: wire.batch_id,
+            root: wire.root,
+            leaf_count: wire.leaf_count,
+            proof_epoch: wire.proof_epoch,
+            session_pub: wire.session_pub,
+            price_table_hash: wire.price_table_hash,
+            proof: wire.proof,
+            proof_upload: wire.proof_upload,
+            signature: wire.signature,
+        };
+        request.proof_source()?;
+        Ok(request)
+    }
+}
+
 impl OpenRequest {
+    /// The proof source. Exactly one of `proof` and `proof_upload` must be set.
+    pub fn proof_source(&self) -> Result<ProofSource<'_>, &'static str> {
+        match (&self.proof, &self.proof_upload) {
+            (Some(proof), None) => Ok(ProofSource::Inline(&proof.0)),
+            (None, Some(upload)) => Ok(ProofSource::Upload(upload)),
+            (Some(_), Some(_)) => Err("open request has both proof and proof_upload"),
+            (None, None) => Err("open request has neither proof nor proof_upload"),
+        }
+    }
+
     /// The signing message of this request.
     pub fn message(&self) -> OpenMessage {
         OpenMessage {
@@ -325,6 +469,20 @@ pub struct GatewayLimits {
     pub response_retention_seconds: u32,
     /// Time in milliseconds that a request waits for the batch lock.
     pub batch_lock_wait_ms: u32,
+    /// Largest chunked proof upload in bytes. Also the largest proof after decompression.
+    pub open_upload_max_bytes: u32,
+    /// Largest raw data of one chunk in bytes.
+    pub open_upload_chunk_bytes: u32,
+    /// Largest `PUT /v1/open/chunks` body in bytes.
+    pub open_upload_chunk_body_bytes: u32,
+    /// Largest number of chunks of one upload.
+    pub open_upload_max_chunks: u32,
+    /// Time in seconds that the gateway keeps an upload that no open request used.
+    pub open_upload_ttl_seconds: u32,
+    /// Largest number of pending uploads.
+    pub open_upload_max_pending: u32,
+    /// Largest sum of the declared sizes of all pending uploads in bytes.
+    pub open_upload_max_pending_bytes: u32,
 }
 
 /// `GET /v1/config` response body.
@@ -450,5 +608,80 @@ mod tests {
         );
         let back: ErrorBody = serde_json::from_str(&json).unwrap();
         assert_eq!(back.code, ErrorCode::Busy);
+    }
+    #[test]
+    fn largest_chunk_envelope_is_below_the_body_limit() {
+        let chunk = OpenChunkRequest {
+            batch_id: Bytes32([0xff; 32]),
+            proof_sha256: Bytes32([0xff; 32]),
+            total_bytes: u32::MAX,
+            chunk_index: u32::MAX,
+            chunk_count: u32::MAX,
+            data: Base64Bytes(vec![0xff; OPEN_CHUNK_MAX_BYTES]),
+        };
+        let json = serde_json::to_vec(&chunk).unwrap();
+        assert!(
+            json.len() < OPEN_CHUNK_BODY_LIMIT_BYTES,
+            "{} bytes",
+            json.len()
+        );
+        // The Nox worker refused bodies above about 48,000 bytes.
+        const { assert!(OPEN_CHUNK_BODY_LIMIT_BYTES <= 40_000) };
+    }
+
+    fn open_json(proof: Option<&str>, upload: bool) -> String {
+        let mut value = serde_json::json!({
+            "protocol_version": 1,
+            "deployment_id": format!("0x{}", "11".repeat(32)),
+            "gateway_id": format!("0x{}", "22".repeat(32)),
+            "batch_id": format!("0x{}", "03".repeat(32)),
+            "root": format!("0x{}", "04".repeat(32)),
+            "leaf_count": 5,
+            "proof_epoch": "6",
+            "session_pub": format!("0x{}", "77".repeat(32)),
+            "price_table_hash": format!("0x{}", "88".repeat(32)),
+            "signature": "A".repeat(86) + "==",
+        });
+        if let Some(proof) = proof {
+            value["proof"] = serde_json::Value::String(proof.to_owned());
+        }
+        if upload {
+            value["proof_upload"] = serde_json::json!({
+                "proof_sha256": format!("0x{}", "99".repeat(32)),
+                "total_bytes": 300000,
+                "proof_encoding": "json+gzip",
+            });
+        }
+        value.to_string()
+    }
+
+    #[test]
+    fn open_request_needs_exactly_one_proof_source() {
+        let inline: OpenRequest = serde_json::from_str(&open_json(Some("AQID"), false)).unwrap();
+        assert_eq!(inline.proof_source(), Ok(ProofSource::Inline(&[1, 2, 3])));
+        let upload: OpenRequest = serde_json::from_str(&open_json(None, true)).unwrap();
+        let Ok(ProofSource::Upload(reference)) = upload.proof_source() else {
+            panic!("expected an upload");
+        };
+        assert_eq!(reference.proof_encoding, ProofEncoding::JsonGzip);
+        assert_eq!(reference.total_bytes, 300_000);
+        // Serialization omits the absent source.
+        let back = serde_json::to_value(&upload).unwrap();
+        assert!(back.get("proof").is_none());
+        assert!(serde_json::from_str::<OpenRequest>(&open_json(Some("AQID"), true)).is_err());
+        assert!(serde_json::from_str::<OpenRequest>(&open_json(None, false)).is_err());
+    }
+
+    #[test]
+    fn proof_encoding_names() {
+        for encoding in [
+            ProofEncoding::Np,
+            ProofEncoding::Json,
+            ProofEncoding::JsonGzip,
+        ] {
+            let json = serde_json::to_string(&encoding).unwrap();
+            assert_eq!(json, format!("\"{}\"", encoding.as_str()));
+        }
+        assert!(serde_json::from_str::<ProofEncoding>("\"gzip\"").is_err());
     }
 }
