@@ -38,7 +38,15 @@ epoch_seconds = 30
 # Credit activation lifetime in epochs.
 credit_lifetime_epochs = 35040
 
-# Circuit and artifact digests. Phase 1 produces these values.
-circuit_id = "0x0000000000000000000000000000000000000000000000000000000000000000"
-verifier_artifact_hash = "0x0000000000000000000000000000000000000000000000000000000000000000"
-prover_manifest_hash = "0x0000000000000000000000000000000000000000000000000000000000000000"
+# Circuit and artifact digests (phase 1). These are public values, not secrets.
+# A change to the circuit, the ProveKit pins, or the WASM builds changes them, and thus
+# gives a new deployment. crates/prover/tests/batch_open.rs checks them against the artifacts.
+#
+# circuit_id: CIRCUIT_ID of circuits/batch-open (public input 0) as 32 big-endian bytes.
+circuit_id = "0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e"
+# verifier_artifact_hash: SHA-256 of artifacts/batch-open/batch-open.pkv. The gateway
+# verifier sidecar loads the key only if the digest is equal.
+verifier_artifact_hash = "0xc8b4fb4722bb6d926d73112223865bd2756413f6f8085e549a90dd16a8aef6d4"
+# prover_manifest_hash: SHA-256 of artifacts/batch-open/prover-manifest.json. The manifest pins
+# the size and the SHA-256 of the prover key and of each WASM file. The client pins this value.
+prover_manifest_hash = "0x373a90b6dde1fc48f6ee771659d76fe87b9c454fee606ab637c65a255c557648"
