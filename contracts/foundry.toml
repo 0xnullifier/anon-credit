@@ -1,0 +1,17 @@
+# Foundry configuration for CreditSale and RootRegistry.
+# Phase 2 adds the contracts, the tests, and the Sepolia deployment scripts.
+# Tests run in the in-process test EVM. They do not start a local network.
+
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+cache_path = "cache"
+optimizer = true
+optimizer_runs = 200
+
+[rpc_endpoints]
+# The URL comes from the environment. Do not write an RPC URL with a key here.
+sepolia = "${SEPOLIA_RPC_URL}"

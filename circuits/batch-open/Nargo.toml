@@ -1,0 +1,6 @@
+[package]
+name = "batch_open"
+type = "bin"
+authors = []
+
+[dependencies]
