@@ -1,0 +1,203 @@
+{
+  "gate": "browser proves, Rust verifies",
+  "status": "passed",
+  "date": "2026-11-06T19:46:48.930Z",
+  "machine": {
+    "os": "darwin 25.5.0",
+    "cpu": "Apple M4 Pro",
+    "cores": 12,
+    "memoryBytes": 25769803776
+  },
+  "versions": {
+    "provekitRev": "201b7b639f5dd5632c01561fcb2a96c2fc8851f3",
+    "provekitRustToolchain": "nightly-2026-03-04",
+    "noir": "1.0.0-beta.26",
+    "wasmBindgen": "0.2.113",
+    "noirJs": "1.0.0-beta.26",
+    "chromium": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36"
+  },
+  "proofSystem": {
+    "hash": "skyscraper",
+    "witnessMode": "zk"
+  },
+  "circuit": {
+    "name": "provekit_sample",
+    "numConstraints": 5136,
+    "numWitnesses": 5224,
+    "numPublicInputs": 3
+  },
+  "manifestSha256": "9d2837c0fcbf5401f150365dd1e1295f99545b7587dc999d722bd471d9882a71",
+  "manifest": {
+    "format": "anon-credit/prover-manifest/v1",
+    "circuit": "provekit_sample",
+    "provekit": {
+      "repo": "https://github.com/worldfnd/provekit",
+      "rev": "201b7b639f5dd5632c01561fcb2a96c2fc8851f3",
+      "witnessMode": "zk",
+      "hash": "skyscraper"
+    },
+    "noir": "1.0.0-beta.26",
+    "numPublicInputs": 3,
+    "pkp": {
+      "path": "sample.pkp",
+      "sha256": "aa94ef34db42772307763c1a5bf27d086cd1ab9614b1426741a53c8baee63302",
+      "bytes": 131105
+    },
+    "pkv": {
+      "path": "sample.pkv",
+      "sha256": "2924a15365089797df27e664edb73d8db918b445b4a4cea02d5effc0ea8c5260",
+      "bytes": 71371
+    },
+    "wasm": {
+      "scalar": {
+        "glue": {
+          "path": "../provekit-wasm/scalar/provekit_wasm.js",
+          "sha256": "c132ec57c6818db92334d632d2c9fb1fe10c8c4bd990e38bccd0e4fe51779663",
+          "bytes": 31435
+        },
+        "binary": {
+          "path": "../provekit-wasm/scalar/provekit_wasm_bg.wasm",
+          "sha256": "56ad91baca448863bee310d936884b49de49ca00af8acdd95c796f03f3c5a2f6",
+          "bytes": 5178314
+        }
+      },
+      "threaded": {
+        "glue": {
+          "path": "../provekit-wasm/threaded/provekit_wasm.js",
+          "sha256": "aad7e2a1f46f2efb029633af3f7f2dd5091959dd343ecfec73710c5a2651911d",
+          "bytes": 31011
+        },
+        "binary": {
+          "path": "../provekit-wasm/threaded/provekit_wasm_bg.wasm",
+          "sha256": "a8af80f881865e099d7debb0c7c772b34172db637a7ae23e1488bf92eed56aca",
+          "bytes": 5342715
+        },
+        "helper": {
+          "path": "../provekit-wasm/threaded/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.js",
+          "sha256": "e4615d5bbbd6efc303810bbe56f82ca0e9c89b1879c07a10c2d667549a1b5f8f",
+          "bytes": 4563
+        }
+      }
+    }
+  },
+  "proofSize": {
+    "browserJsonBytes": 450276,
+    "browserJsonGzipBytes": 297310,
+    "nativeBinaryBytes": 293627
+  },
+  "artifactDownload": {
+    "scalar": {
+      "rawBytes": 5340854,
+      "gzipBytes": 1290579
+    },
+    "threaded": {
+      "rawBytes": 5509394,
+      "gzipBytes": 1325780
+    },
+    "noirJsWasmBytes": "bundled by the page, not in the manifest"
+  },
+  "browser": {
+    "scalar": {
+      "crossOriginIsolated": false,
+      "threads": 1,
+      "hardwareConcurrency": 12,
+      "loadMs": 62,
+      "coldFirstProofMs": 412.40000000596046,
+      "runs": [
+        {
+          "durationMs": 310.2000000178814,
+          "witnessMs": 30,
+          "provingMs": 280.2000000178814,
+          "proofBytes": 450276,
+          "wasmMemoryBytes": 12124160
+        },
+        {
+          "durationMs": 252.5,
+          "witnessMs": 2.4000000059604645,
+          "provingMs": 250.09999999403954,
+          "proofBytes": 448868,
+          "wasmMemoryBytes": 12124160
+        },
+        {
+          "durationMs": 253.69999998807907,
+          "witnessMs": 2.9000000059604645,
+          "provingMs": 250.7999999821186,
+          "proofBytes": 452068,
+          "wasmMemoryBytes": 12124160
+        }
+      ]
+    },
+    "threaded": {
+      "crossOriginIsolated": true,
+      "threads": 8,
+      "hardwareConcurrency": 12,
+      "loadMs": 69.94500002264977,
+      "coldFirstProofMs": 264.3349999785423,
+      "runs": [
+        {
+          "durationMs": 154.04499998688698,
+          "witnessMs": 29.834999978542328,
+          "provingMs": 124.21000000834465,
+          "proofBytes": 450872,
+          "wasmMemoryBytes": 29097984
+        },
+        {
+          "durationMs": 89.65000000596046,
+          "witnessMs": 2.3550000190734863,
+          "provingMs": 87.29499998688698,
+          "proofBytes": 451768,
+          "wasmMemoryBytes": 29097984
+        },
+        {
+          "durationMs": 88.90999999642372,
+          "witnessMs": 2.6299999952316284,
+          "provingMs": 86.2800000011921,
+          "proofBytes": 449848,
+          "wasmMemoryBytes": 29097984
+        }
+      ]
+    }
+  },
+  "rustVerify": {
+    "perProof": {
+      "scalar": {
+        "valid": {
+          "result": "valid",
+          "proof_bytes": 450276,
+          "verify_ms": 12.981
+        },
+        "tamperedRejected": "error: proof rejected: Joint WHIR verification failed",
+        "wrongExpectedInputRejected": "error: public input 2 is not the expected value",
+        "alteredProofInputRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+      },
+      "threaded": {
+        "valid": {
+          "result": "valid",
+          "proof_bytes": 450872,
+          "verify_ms": 9.591
+        },
+        "tamperedRejected": "error: proof rejected: Joint WHIR verification failed",
+        "wrongExpectedInputRejected": "error: public input 2 is not the expected value",
+        "alteredProofInputRejected": "error: proof rejected: while verifying sumcheck: Sumcheck equality assertion failed"
+      }
+    },
+    "benchBrowserProofOneThread": {
+      "result": "valid",
+      "verify_ms": {
+        "min": 12.671,
+        "median": 12.893,
+        "mean": 12.919,
+        "max": 13.531
+      }
+    },
+    "benchBrowserProofAllThreads": {
+      "result": "valid",
+      "verify_ms": {
+        "min": 8.679,
+        "median": 8.918,
+        "mean": 8.948,
+        "max": 10.318
+      }
+    }
+  }
+}
