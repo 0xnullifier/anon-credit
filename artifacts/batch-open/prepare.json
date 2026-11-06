@@ -1,0 +1,19 @@
+{
+  "circuit": "circuits/batch-open",
+  "noir": "1.0.0-beta.26",
+  "provekitRev": "201b7b639f5dd5632c01561fcb2a96c2fc8851f3",
+  "hash": "skyscraper",
+  "witnessMode": "zk",
+  "acirOpcodes": 819,
+  "r1csConstraints": 14416,
+  "r1csWitnesses": 14672,
+  "pkp": { "bytes": 326077, "sha256": "be804ed5936ffc4b82509136371bc0f4b6d7b4781188990595d20d3e9636b2e9" },
+  "pkv": { "bytes": 178694, "sha256": "c8b4fb4722bb6d926d73112223865bd2756413f6f8085e549a90dd16a8aef6d4" },
+  "nativeProof": { "binaryBytes": 305826, "jsonBytes": 477018 },
+  "nativeCli": {
+    "note": "one run of provekit-cli on this machine; wall time includes process start and key loading",
+    "prepare": { "wallMs": 930, "maxRssBytes": 218136576 },
+    "prove": { "wallMs": 100, "maxRssBytes": 71794688 },
+    "verify": { "wallMs": 20, "maxRssBytes": 29589504 }
+  }
+}
