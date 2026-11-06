@@ -4,7 +4,8 @@ Anonymous prepaid credit for JSON-RPC. A client buys credit on Sepolia, proves o
 one batch with a local ProveKit proof, opens an anonymous session at the gateway, and makes
 signed, paid JSON-RPC reads through Anon-RPC.
 
-Governing document: [implementation.md](implementation.md).
+Governing document: [implementation.md](implementation.md). Operator sequence for the demo:
+[RUNBOOK.md](RUNBOOK.md).
 Background: [PRD.md](PRD.md), [Architecture.md](Architecture.md), [PROVER.md](PROVER.md).
 Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not delete it.
 
@@ -18,7 +19,7 @@ Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not dele
 | 3. Gateway | Open, spend, receipts, status recovery, pricing, limits | Done in code and tests; a live run needs the deployed contracts, the sidecar, and an upstream RPC |
 | 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Done in code and tests; the local integration harness passes 15 of 15 steps (anvil, direct transport). The Sepolia run through Nox is open: it needs the deployment and public HTTPS services, and Nox refuses request bodies above about 48 KB, so the open request (about 640 KB) does not pass |
 | 5. Dashboard | Admin snapshots, event stream, session views, demo IP attribution | Done in code and tests against the mock admin server and the shared schemas; a live run needs a running gateway |
-| 6. Complete demo | Script and dashboard on the same paid flow through Nox | Not started |
+| 6. Complete demo | Script and dashboard on the same paid flow through Nox | In code and tests: admin snapshot gaps closed, dashboard demo comparison and session timeline, deployment helper and service launcher (tested on anvil), runbook ([RUNBOOK.md](RUNBOOK.md)). The live Sepolia run through Nox is open: it needs the user's deployment and public HTTPS services |
 | 7. Measurement | Proving, resource, and gateway benchmarks | Not started |
 
 Phase 0 contents:
@@ -367,7 +368,9 @@ New error codes: `not_found` and `payment_invalid` (both not retryable).
 
 ### Deploy the contracts
 
-The user deploys. No check broadcasts a transaction.
+The user deploys. No check broadcasts a transaction. The helper
+`tooling/deploy/deploy-sepolia.sh` does the steps below and writes the deployment files (see
+"Complete demo (phase 6)"). The manual commands:
 
 ```sh
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -607,9 +610,9 @@ with its receipts.
 
 | Endpoint | Result |
 |---|---|
-| `GET /admin/v1/snapshot` | Status, verifier, root status, counters, session totals, recent events and sessions |
+| `GET /admin/v1/snapshot` | Status, deployment and gateway IDs, `epoch_seconds`, `circuit_id`, `verifier_artifact_hash`, `demo_ip_logging`, verifier, `price_table` and `price_table_hash`, root status, `root_window_epochs`, `accepted_roots`, counters, session totals, recent events and sessions |
 | `GET /admin/v1/events` | Server-Sent Events; `id` is the monotonic event ID; reconnect with `Last-Event-ID` |
-| `GET /admin/v1/sessions/{batch_id}` | Session summary and recent receipt metadata |
+| `GET /admin/v1/sessions/{batch_id}` | Session summary and receipt metadata, newest first, at most 200 (a batch has at most 100 receipts) |
 
 The token is never accepted in a URL. Envelopes: `crates/protocol/src/admin.rs` and
 `packages/protocol/src/admin-api.ts`.
@@ -866,9 +869,10 @@ The gateway allows the dashboard origin with `GATEWAY_CORS_ORIGINS` (default inc
 |---|---|
 | Health and counters | Snapshot: status, upstream chain, epoch, accepted root age and refresh error, sessions (active, at zero, expired), request and failure counters, units charged; median and p95 latency of the received events; stream state, invalid and repeated events |
 | Live events | Snapshot `recent_events`, then the event stream. UTC time, kind, batch ID (short, copy, click for details), seq, method, result, latency, units, "Observed source IP". Filter by kind and batch ID. |
-| Session details | `GET /admin/v1/sessions/{batch_id}`: remaining, cumulative units, next seq, deadline, proof size, verification time, recent receipts. Refreshes when an event of the batch arrives. |
-| Connection diagnostics | Socket peer IP, effective source IP (trusted proxy), and attribution source of the newest event. "Direct probe" calls the public `GET /v1/demo/peer` from the browser and shows the result next to the newest anonymous session event. With `DEMO_IP_LOGGING=false` the field is "unavailable" with a note. |
-| Proof and privacy | Circuit ID, verifier key SHA-256, witness mode (snapshot); price table and hash with a local check of the canonical encoding (`/v1/prices`); accepted roots (`/v1/roots`). |
+| Session details | `GET /admin/v1/sessions/{batch_id}`: remaining, cumulative units, next seq, deadline epoch and its end as a UTC time, proof size, verification time, receipts (up to 200, with the count). The timeline of the selected batch from the received events: `open_received` -> `open_verified` -> `session_opened` -> `rpc_*` (an `open_received` has no batch ID; the timeline takes the newest one from the same observed address and marks it). Refreshes when an event of the batch arrives. |
+| Connection diagnostics | Socket peer IP, effective source IP (trusted proxy), and attribution source of the newest event. With `DEMO_IP_LOGGING=false` the field is "unavailable" with a note. |
+| Demo comparison | Side by side: (a) "Direct probe" calls the public `GET /v1/demo/peer` from the browser; (b) the newest `session_opened` event and the spend outcomes of its batch, each with its "Observed source IP" and proxy hop. The comparison text and the routing statement are next to them. Off in the normal profile. |
+| Proof and privacy | From the snapshot: deployment ID, gateway ID, circuit ID, verifier key pin and the sidecar key digest (with an equality check), witness mode, epoch length, IP capture profile, price table and hash with a local check of the canonical encoding, accepted roots. The public `/v1/prices` and `/v1/roots` are a cross-check ("agrees with the snapshot"); if they fail, the snapshot values stay. |
 
 The dashboard says "Observed source IP" and never "verified anonymous". Different observed
 addresses are evidence of routing, not proof against timing or content analysis; the page says
@@ -906,6 +910,24 @@ storage (also when storage throws), the event model, rendering of the probe comp
 "unavailable" profile, the price hash check, and integration tests over HTTP against the mock
 in both IP profiles. Test data comes from `fixtures/protocol/gateway-api.json`, which the Rust
 gateway tests also check, so the shapes match the gateway.
+
+## Complete demo (phase 6)
+
+The operator sequence is in [RUNBOOK.md](RUNBOOK.md): tools, WASM, deployment, env file,
+services behind HTTPS (Caddy and nginx examples with `GATEWAY_TRUSTED_PROXY_ADDRS`), dashboard,
+`pnpm example:e2e`, what each of the 16 steps shows, the waits, the 4-minute demo script, and what
+is not in this build.
+
+| Part | Path |
+|---|---|
+| Deployment helper | `tooling/deploy/deploy-sepolia.sh`: `forge script` broadcast, reads `run-latest.json`, writes `contracts/deployments/sepolia.json` and `config/deployment.testnet.toml` (new random `gateway_id`, template digests), prints `ISSUER_START_BLOCK`, `forge verify-contract` with `ETHERSCAN_API_KEY`. Refuses a chain other than 11155111 and refuses to replace files without `DEPLOY_FORCE=1`. |
+| Helper test | `tooling/deploy/test-deploy-anvil.sh [--with-services]`: anvil with chain ID 11155111, outputs in a temporary directory (`DEPLOY_RECORD_PATH`, `DEPLOY_CONFIG_PATH`, `FOUNDRY_BROADCAST`), checks the record and the TOML against the chain and the template; with `--with-services` it also starts the services on the deployment, checks the new admin snapshot fields, and stops them. `pnpm test:integration` runs it first. |
+| Service launcher | `tooling/dev/run-services.sh [env-file]` (default `config/testnet-demo.env`) and `tooling/dev/stop-services.sh [run-dir]`: prover artifact digests, builds, sidecar, issuer, gateway, logs and PIDs in `data/run/<time>/`, health checks, admin snapshot check. |
+| Admin snapshot additions | `crates/protocol/src/admin.rs`, `packages/protocol/src/admin-api.ts`, `fixtures/protocol/gateway-api.json` |
+| Dashboard | Demo comparison panel, session timeline, deadline in UTC, receipt count, privacy panel from the snapshot |
+| Sepolia runner | Step 15 records the admin view of the three batches (remaining, cumulative units, next seq, state, receipts, proof size, verification time) and the gateway counters; `run.ts` prints the dashboard URL and the admin token reminder (never the token). |
+
+Git ignores the filled `config/testnet-demo.env` and the written `config/deployment.testnet.toml`.
 
 ## Pinned versions
 
