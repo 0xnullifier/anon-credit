@@ -1,11 +1,27 @@
 //! Gateway settings from environment variables.
+//!
+//! The README lists each variable. Secrets (the admin token and RPC URLs with API keys) come
+//! only from the environment. The summary prints `set` or `not set` for them.
 
+use crate::app::Limits;
+use crate::peer::DEFAULT_FORWARDED_HEADER;
 use anon_credit_protocol::settings::{
     CommonSettings, GATEWAY_ADMIN_PORT, GATEWAY_PUBLIC_PORT, SettingsError, presence, read_bind,
     read_bool, read_optional, read_parsed,
 };
+use axum::http::HeaderName;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
+use std::time::Duration;
+
+/// Default address of the ProveKit verifier sidecar.
+pub const DEFAULT_VERIFIER_URL: &str = "http://127.0.0.1:8083";
+
+/// Default interval between root refreshes, in seconds.
+pub const DEFAULT_ROOT_POLL_SECONDS: u64 = 10;
+
+/// Shortest admin token that the gateway accepts.
+pub const MIN_ADMIN_TOKEN_LEN: usize = 16;
 
 /// Default origins for CORS: the development browser page and the dashboard.
 pub const DEFAULT_CORS_ORIGINS: &str = "http://localhost:5173,http://localhost:5174";
@@ -29,21 +45,122 @@ pub struct GatewaySettings {
     pub admin_token: Option<String>,
     /// Demo profile: capture the observed source IP (`DEMO_IP_LOGGING`). Default `false`.
     pub demo_ip_logging: bool,
-    /// Trusted reverse proxy address (`GATEWAY_TRUSTED_PROXY`).
-    pub trusted_proxy: Option<IpAddr>,
+    /// Trusted reverse proxy addresses (`GATEWAY_TRUSTED_PROXY_ADDRS`, comma separated, and
+    /// the older single-value `GATEWAY_TRUSTED_PROXY`).
+    pub trusted_proxies: Vec<IpAddr>,
+    /// Forwarding header that a trusted proxy sets (`GATEWAY_FORWARDED_HEADER`).
+    pub forwarded_header: HeaderName,
     /// Allowed CORS origins (`GATEWAY_CORS_ORIGINS`), comma separated.
     pub cors_origins: Vec<String>,
+    /// Verifier sidecar base URL (`GATEWAY_VERIFIER_URL`).
+    pub verifier_url: String,
+    /// Expected upstream chain ID (`GATEWAY_UPSTREAM_CHAIN_ID`). Default: the deployment
+    /// `payment_chain_id`.
+    pub upstream_chain_id: Option<u64>,
+    /// Interval between root refreshes (`GATEWAY_ROOT_POLL_SECONDS`).
+    pub root_poll_seconds: u64,
+    /// Resource limits (`GATEWAY_*_LIMIT_BYTES`, `GATEWAY_UPSTREAM_TIMEOUT_MS`,
+    /// `GATEWAY_PROOF_CONCURRENCY`, `GATEWAY_PROOF_QUEUE_DEPTH`).
+    pub limits: Limits,
+}
+
+fn invalid(name: &'static str, reason: impl Into<String>) -> SettingsError {
+    SettingsError::Invalid {
+        name,
+        reason: reason.into(),
+    }
+}
+
+fn read_ip_list(
+    lookup: &impl Fn(&str) -> Option<String>,
+    name: &'static str,
+) -> Result<Vec<IpAddr>, SettingsError> {
+    read_optional(lookup, name)
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(|text| {
+            text.parse::<IpAddr>()
+                .map_err(|e| invalid(name, e.to_string()))
+        })
+        .collect()
+}
+
+fn read_positive(
+    lookup: &impl Fn(&str) -> Option<String>,
+    name: &'static str,
+    default: u64,
+) -> Result<u64, SettingsError> {
+    match read_parsed(lookup, name, default)? {
+        0 => Err(invalid(name, "must be greater than zero")),
+        value => Ok(value),
+    }
+}
+
+fn read_size(
+    lookup: &impl Fn(&str) -> Option<String>,
+    name: &'static str,
+    default: usize,
+) -> Result<usize, SettingsError> {
+    let value = read_positive(lookup, name, default as u64)?;
+    usize::try_from(value).map_err(|_| invalid(name, "value is too large"))
+}
+
+fn read_limits(lookup: &impl Fn(&str) -> Option<String>) -> Result<Limits, SettingsError> {
+    let defaults = Limits::default();
+    Ok(Limits {
+        open_body_bytes: read_size(
+            lookup,
+            "GATEWAY_OPEN_BODY_LIMIT_BYTES",
+            defaults.open_body_bytes,
+        )?,
+        spend_body_bytes: read_size(
+            lookup,
+            "GATEWAY_SPEND_BODY_LIMIT_BYTES",
+            defaults.spend_body_bytes,
+        )?,
+        upstream_response_bytes: read_size(
+            lookup,
+            "GATEWAY_UPSTREAM_RESPONSE_LIMIT_BYTES",
+            defaults.upstream_response_bytes,
+        )?,
+        upstream_timeout: Duration::from_millis(read_positive(
+            lookup,
+            "GATEWAY_UPSTREAM_TIMEOUT_MS",
+            15_000,
+        )?),
+        proof_concurrency: read_size(
+            lookup,
+            "GATEWAY_PROOF_CONCURRENCY",
+            defaults.proof_concurrency,
+        )?,
+        proof_queue_depth: read_parsed(
+            lookup,
+            "GATEWAY_PROOF_QUEUE_DEPTH",
+            defaults.proof_queue_depth,
+        )?,
+        response_retention_secs: defaults.response_retention_secs,
+        batch_lock_wait: defaults.batch_lock_wait,
+    })
 }
 
 impl GatewaySettings {
     /// Read the settings with a lookup function.
     pub fn from_lookup(lookup: &impl Fn(&str) -> Option<String>) -> Result<Self, SettingsError> {
-        let trusted_proxy = match read_optional(lookup, "GATEWAY_TRUSTED_PROXY") {
+        let mut trusted_proxies = read_ip_list(lookup, "GATEWAY_TRUSTED_PROXY_ADDRS")?;
+        trusted_proxies.extend(read_ip_list(lookup, "GATEWAY_TRUSTED_PROXY")?);
+        let forwarded_header = read_optional(lookup, "GATEWAY_FORWARDED_HEADER")
+            .unwrap_or_else(|| DEFAULT_FORWARDED_HEADER.to_owned())
+            .to_ascii_lowercase()
+            .parse::<HeaderName>()
+            .map_err(|e| invalid("GATEWAY_FORWARDED_HEADER", e.to_string()))?;
+        let upstream_chain_id = match read_optional(lookup, "GATEWAY_UPSTREAM_CHAIN_ID") {
             None => None,
-            Some(text) => Some(text.parse::<IpAddr>().map_err(|e| SettingsError::Invalid {
-                name: "GATEWAY_TRUSTED_PROXY",
-                reason: e.to_string(),
-            })?),
+            Some(text) => Some(
+                text.parse::<u64>()
+                    .map_err(|e| invalid("GATEWAY_UPSTREAM_CHAIN_ID", e.to_string()))?,
+            ),
         };
         let cors_origins = read_optional(lookup, "GATEWAY_CORS_ORIGINS")
             .unwrap_or_else(|| DEFAULT_CORS_ORIGINS.to_owned())
@@ -54,7 +171,11 @@ impl GatewaySettings {
             .collect();
         Ok(Self {
             common: CommonSettings::from_lookup(lookup)?,
-            public_bind: read_bind(lookup, "GATEWAY_PUBLIC_BIND", GATEWAY_PUBLIC_PORT)?,
+            public_bind: read_parsed(
+                lookup,
+                "GATEWAY_PUBLIC_BIND",
+                SocketAddr::from(([0, 0, 0, 0], GATEWAY_PUBLIC_PORT)),
+            )?,
             admin_bind: read_bind(lookup, "GATEWAY_ADMIN_BIND", GATEWAY_ADMIN_PORT)?,
             database_path: read_parsed(
                 lookup,
@@ -66,8 +187,18 @@ impl GatewaySettings {
                 .or_else(|| read_optional(lookup, "SEPOLIA_RPC_URL")),
             admin_token: read_optional(lookup, "GATEWAY_ADMIN_TOKEN"),
             demo_ip_logging: read_bool(lookup, "DEMO_IP_LOGGING", false)?,
-            trusted_proxy,
+            trusted_proxies,
+            forwarded_header,
             cors_origins,
+            verifier_url: read_optional(lookup, "GATEWAY_VERIFIER_URL")
+                .unwrap_or_else(|| DEFAULT_VERIFIER_URL.to_owned()),
+            upstream_chain_id,
+            root_poll_seconds: read_positive(
+                lookup,
+                "GATEWAY_ROOT_POLL_SECONDS",
+                DEFAULT_ROOT_POLL_SECONDS,
+            )?,
+            limits: read_limits(lookup)?,
         })
     }
 
@@ -90,12 +221,25 @@ impl GatewaySettings {
             presence(&self.admin_token)
         ));
         lines.push(format!("DEMO_IP_LOGGING: {}", self.demo_ip_logging));
-        let proxy = match self.trusted_proxy {
-            Some(ip) => ip.to_string(),
-            None => "none (use socket peer address)".to_owned(),
+        let proxies = match self.trusted_proxies.is_empty() {
+            true => "none (use socket peer address)".to_owned(),
+            false => format!("{} configured", self.trusted_proxies.len()),
         };
-        lines.push(format!("trusted proxy: {proxy}"));
+        lines.push(format!("trusted proxies: {proxies}"));
+        lines.push(format!("forwarding header: {}", self.forwarded_header));
         lines.push(format!("CORS origins: {}", self.cors_origins.join(", ")));
+        lines.push(format!("verifier sidecar: {}", self.verifier_url));
+        lines.push(format!("root poll seconds: {}", self.root_poll_seconds));
+        let limits = self.limits.to_api();
+        lines.push(format!(
+            "limits: open {} B, spend {} B, upstream {} B, timeout {} ms, proofs {} (+{} queued)",
+            limits.open_body_bytes,
+            limits.spend_body_bytes,
+            limits.upstream_response_bytes,
+            limits.upstream_timeout_ms,
+            limits.proof_verify_concurrency,
+            limits.proof_queue_depth
+        ));
         lines
     }
 }
@@ -119,7 +263,11 @@ mod tests {
     fn defaults_match_implementation_plan() {
         let settings = GatewaySettings::from_lookup(&lookup_from(&[])).unwrap();
         assert_eq!(settings.public_bind.port(), 8081);
+        assert!(settings.public_bind.ip().is_unspecified());
         assert_eq!(settings.admin_bind.port(), 8082);
+        assert_eq!(settings.limits, Limits::default());
+        assert_eq!(settings.verifier_url, DEFAULT_VERIFIER_URL);
+        assert_eq!(settings.forwarded_header.as_str(), "x-forwarded-for");
         assert!(settings.admin_bind.ip().is_loopback());
         assert!(!settings.demo_ip_logging);
         assert_eq!(settings.cors_origins.len(), 2);
@@ -143,6 +291,24 @@ mod tests {
         let summary = settings.summary_lines().join("\n");
         assert!(summary.contains("GATEWAY_ADMIN_TOKEN: set"));
         assert!(!summary.contains("token-value-123"));
+    }
+
+    #[test]
+    fn reads_trusted_proxy_list_and_limits() {
+        let settings = GatewaySettings::from_lookup(&lookup_from(&[
+            ("GATEWAY_TRUSTED_PROXY_ADDRS", "10.0.0.1, ::1"),
+            ("GATEWAY_TRUSTED_PROXY", "10.0.0.2"),
+            ("GATEWAY_SPEND_BODY_LIMIT_BYTES", "1024"),
+            ("GATEWAY_FORWARDED_HEADER", "X-Real-IP"),
+        ]))
+        .unwrap();
+        assert_eq!(settings.trusted_proxies.len(), 3);
+        assert_eq!(settings.limits.spend_body_bytes, 1024);
+        assert_eq!(settings.forwarded_header.as_str(), "x-real-ip");
+        assert!(
+            GatewaySettings::from_lookup(&lookup_from(&[("GATEWAY_PROOF_CONCURRENCY", "0")]))
+                .is_err()
+        );
     }
 
     #[test]

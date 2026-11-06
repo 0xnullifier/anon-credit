@@ -19,15 +19,21 @@
 //!
 //! The gateway must not depend on the issuer crate or on payment records.
 
+pub mod admin;
+pub mod app;
 pub mod clock;
 pub mod epoch;
 pub mod error;
 pub mod events;
 pub mod locks;
+pub mod open;
 pub mod peer;
+pub mod public;
 pub mod roots;
 pub mod rpc;
 pub mod settings;
+pub mod spend;
+pub mod status;
 pub mod store;
 pub mod strict_json;
 pub mod upstream;
