@@ -1,0 +1,15 @@
+[package]
+name = "anon-credit-prover"
+description = "ProveKit verifier adapter and native benchmark command."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anon-credit-protocol.workspace = true
+thiserror.workspace = true

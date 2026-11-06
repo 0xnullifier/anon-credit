@@ -1,0 +1,30 @@
+[package]
+name = "anon-credit-issuer"
+description = "Sale indexing, credit issuance, root publication, and issuer HTTP API."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anon-credit-crypto.workspace = true
+anon-credit-protocol.workspace = true
+anon-credit-registry.workspace = true
+alloy.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[[bin]]
+name = "issuer"
+path = "src/main.rs"
