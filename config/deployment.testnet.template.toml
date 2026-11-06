@@ -1,0 +1,44 @@
+# Sepolia testnet deployment configuration (template).
+#
+# This file has only public values. Do not put private keys, tokens, or RPC URLs here.
+# Secrets come from environment variables. See config/testnet-demo.env.example.
+#
+# Copy this file, then replace each all-zero placeholder with the deployed value.
+# The services print a warning for each field that still has a placeholder.
+#
+# deployment_id = keccak256(fixed binary encoding of these fields).
+# A change to any field gives a new deployment. Proofs from the old deployment are not valid.
+#
+# Hex values: 0x prefix, lowercase digits, exact length. EIP-55 checksums are not accepted.
+
+protocol_version = 1
+
+# Sepolia.
+payment_chain_id = 11155111
+
+# CreditSale contract address. Phase 2 deploys it.
+sale_address = "0x0000000000000000000000000000000000000000"
+
+# RootRegistry contract address. Phase 2 deploys it.
+root_registry_address = "0x0000000000000000000000000000000000000000"
+
+# Issuer identity: the EVM address that owns the sale and publishes roots.
+issuer_address = "0x0000000000000000000000000000000000000000"
+
+# Random 32-byte gateway identity. Make it once per deployment, for example with
+# `openssl rand -hex 32`. It is not a customer identifier.
+gateway_id = "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+# Units in one batch (K).
+batch_size = 100
+
+# Epoch length. Testnet: 30. Production: 900. EPOCH_SECONDS must match if it is set.
+epoch_seconds = 30
+
+# Credit activation lifetime in epochs.
+credit_lifetime_epochs = 35040
+
+# Circuit and artifact digests. Phase 1 produces these values.
+circuit_id = "0x0000000000000000000000000000000000000000000000000000000000000000"
+verifier_artifact_hash = "0x0000000000000000000000000000000000000000000000000000000000000000"
+prover_manifest_hash = "0x0000000000000000000000000000000000000000000000000000000000000000"
