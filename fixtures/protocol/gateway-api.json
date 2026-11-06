@@ -171,6 +171,148 @@
       "observed_ip": "203.0.113.7",
       "attribution": "socket",
       "proxy_hop": null
+    },
+    "gateway_event": {
+      "id": "5",
+      "at_ms": "1800000000123",
+      "kind": "rpc_completed",
+      "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+      "seq": "0",
+      "method": "eth_chainId",
+      "error_code": null,
+      "latency_ms": 4,
+      "units": 1,
+      "remaining": 99,
+      "request_bytes": 190,
+      "response_bytes": 44,
+      "observed_ip": "unavailable",
+      "ip_attribution": "unavailable",
+      "proxy_hop": null
+    },
+    "gateway_event_demo": {
+      "id": "6",
+      "at_ms": "1800000000123",
+      "kind": "rpc_rejected",
+      "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+      "seq": "0",
+      "method": "eth_chainId",
+      "error_code": "sequence_gap",
+      "latency_ms": 4,
+      "units": null,
+      "remaining": null,
+      "request_bytes": 190,
+      "response_bytes": 44,
+      "observed_ip": "203.0.113.7",
+      "ip_attribution": "trusted_proxy",
+      "proxy_hop": "10.0.0.1"
+    },
+    "admin_snapshot": {
+      "status": "ok",
+      "started_at": "1800000000",
+      "now": "1800000030",
+      "current_epoch": "60000001",
+      "deployment_id": "0x278f691440dd3b7c8adf0f7ab8b07346673fe19f9bb0f30d049751f203e34f73",
+      "gateway_id": "0xa61001e231d72fab7720a2aeb8357cbc84078a9087053ff2d550382a72181e7c",
+      "upstream_chain_id": 11155111,
+      "demo_ip_logging": false,
+      "verifier": {
+        "pkv_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+        "circuit_id": "0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e",
+        "witness_mode": "zk"
+      },
+      "roots": {
+        "accepted": 1,
+        "latest_source_epoch": "60000000",
+        "latest_age_epochs": "1",
+        "last_refresh_at": "1800000020",
+        "last_error": null
+      },
+      "counters": {
+        "open_received": "1",
+        "open_rejected": "1",
+        "sessions_opened": "1",
+        "rpc_received": "1",
+        "rpc_completed": "1",
+        "rpc_replayed": "1",
+        "rpc_rejected": "1",
+        "upstream_failed": "1",
+        "storage_failed": "1",
+        "units_charged": "1"
+      },
+      "sessions": {
+        "active": "1",
+        "exhausted": "0",
+        "expired": "0",
+        "units_charged": "1"
+      },
+      "recent_events": [
+        {
+          "id": "5",
+          "at_ms": "1800000000123",
+          "kind": "rpc_completed",
+          "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+          "seq": "0",
+          "method": "eth_chainId",
+          "error_code": null,
+          "latency_ms": 4,
+          "units": 1,
+          "remaining": 99,
+          "request_bytes": 190,
+          "response_bytes": 44,
+          "observed_ip": "unavailable",
+          "ip_attribution": "unavailable",
+          "proxy_hop": null
+        }
+      ],
+      "recent_sessions": [
+        {
+          "session": {
+            "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+            "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+            "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+            "remaining": 99,
+            "units_total": "1",
+            "next_seq": "1",
+            "open_epoch": "1005",
+            "deadline_epoch": "36045",
+            "state": "active"
+          },
+          "opened_at": "1800000000",
+          "proof_size": 300000,
+          "verify_ms": 12
+        }
+      ]
+    },
+    "session_detail": {
+      "summary": {
+        "session": {
+          "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+          "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+          "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+          "remaining": 99,
+          "units_total": "1",
+          "next_seq": "1",
+          "open_epoch": "1005",
+          "deadline_epoch": "36045",
+          "state": "active"
+        },
+        "opened_at": "1800000000",
+        "proof_size": 300000,
+        "verify_ms": 12
+      },
+      "receipts": [
+        {
+          "receipt": {
+            "seq": "0",
+            "request_digest": "0xabababababababababababababababababababababababababababababababab",
+            "units": 1,
+            "units_total": "1",
+            "committed_at": "1700000000",
+            "response_retained": true
+          },
+          "method": "eth_chainId"
+        }
+      ]
     }
   },
   "invalid": [
@@ -473,6 +615,184 @@
           "x": 1
         },
         "nonce": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+      }
+    },
+    {
+      "name": "unknown_kind",
+      "type": "gateway_event",
+      "value": {
+        "id": "5",
+        "at_ms": "1800000000123",
+        "kind": "rpc_done",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "0",
+        "method": "eth_chainId",
+        "error_code": null,
+        "latency_ms": 4,
+        "units": 1,
+        "remaining": 99,
+        "request_bytes": 190,
+        "response_bytes": 44,
+        "observed_ip": "unavailable",
+        "ip_attribution": "unavailable",
+        "proxy_hop": null
+      }
+    },
+    {
+      "name": "omitted_null_field",
+      "type": "gateway_event",
+      "value": {
+        "id": "5",
+        "at_ms": "1800000000123",
+        "kind": "rpc_completed",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "0",
+        "method": "eth_chainId",
+        "error_code": null,
+        "latency_ms": 4,
+        "units": 1,
+        "remaining": 99,
+        "request_bytes": 190,
+        "response_bytes": 44,
+        "observed_ip": "unavailable",
+        "ip_attribution": "unavailable"
+      }
+    },
+    {
+      "name": "numeric_id",
+      "type": "gateway_event",
+      "value": {
+        "id": 5,
+        "at_ms": "1800000000123",
+        "kind": "rpc_completed",
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "seq": "0",
+        "method": "eth_chainId",
+        "error_code": null,
+        "latency_ms": 4,
+        "units": 1,
+        "remaining": 99,
+        "request_bytes": 190,
+        "response_bytes": 44,
+        "observed_ip": "unavailable",
+        "ip_attribution": "unavailable",
+        "proxy_hop": null
+      }
+    },
+    {
+      "name": "unknown_field",
+      "type": "admin_snapshot",
+      "value": {
+        "status": "ok",
+        "started_at": "1800000000",
+        "now": "1800000030",
+        "current_epoch": "60000001",
+        "deployment_id": "0x278f691440dd3b7c8adf0f7ab8b07346673fe19f9bb0f30d049751f203e34f73",
+        "gateway_id": "0xa61001e231d72fab7720a2aeb8357cbc84078a9087053ff2d550382a72181e7c",
+        "upstream_chain_id": 11155111,
+        "demo_ip_logging": false,
+        "verifier": {
+          "pkv_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+          "circuit_id": "0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e",
+          "witness_mode": "zk"
+        },
+        "roots": {
+          "accepted": 1,
+          "latest_source_epoch": "60000000",
+          "latest_age_epochs": "1",
+          "last_refresh_at": "1800000020",
+          "last_error": null
+        },
+        "counters": {
+          "open_received": "1",
+          "open_rejected": "1",
+          "sessions_opened": "1",
+          "rpc_received": "1",
+          "rpc_completed": "1",
+          "rpc_replayed": "1",
+          "rpc_rejected": "1",
+          "upstream_failed": "1",
+          "storage_failed": "1",
+          "units_charged": "1"
+        },
+        "sessions": {
+          "active": "1",
+          "exhausted": "0",
+          "expired": "0",
+          "units_charged": "1"
+        },
+        "recent_events": [
+          {
+            "id": "5",
+            "at_ms": "1800000000123",
+            "kind": "rpc_completed",
+            "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+            "seq": "0",
+            "method": "eth_chainId",
+            "error_code": null,
+            "latency_ms": 4,
+            "units": 1,
+            "remaining": 99,
+            "request_bytes": 190,
+            "response_bytes": 44,
+            "observed_ip": "unavailable",
+            "ip_attribution": "unavailable",
+            "proxy_hop": null
+          }
+        ],
+        "recent_sessions": [
+          {
+            "session": {
+              "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+              "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+              "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+              "remaining": 99,
+              "units_total": "1",
+              "next_seq": "1",
+              "open_epoch": "1005",
+              "deadline_epoch": "36045",
+              "state": "active"
+            },
+            "opened_at": "1800000000",
+            "proof_size": 300000,
+            "verify_ms": 12
+          }
+        ],
+        "token": "x"
+      }
+    },
+    {
+      "name": "receipt_without_method",
+      "type": "session_detail",
+      "value": {
+        "summary": {
+          "session": {
+            "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+            "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+            "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+            "remaining": 99,
+            "units_total": "1",
+            "next_seq": "1",
+            "open_epoch": "1005",
+            "deadline_epoch": "36045",
+            "state": "active"
+          },
+          "opened_at": "1800000000",
+          "proof_size": 300000,
+          "verify_ms": 12
+        },
+        "receipts": [
+          {
+            "receipt": {
+              "seq": "0",
+              "request_digest": "0xabababababababababababababababababababababababababababababababab",
+              "units": 1,
+              "units_total": "1",
+              "committed_at": "1700000000",
+              "response_retained": true
+            }
+          }
+        ]
       }
     }
   ]

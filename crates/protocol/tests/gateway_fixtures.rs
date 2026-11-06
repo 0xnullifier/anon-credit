@@ -6,6 +6,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 use anon_credit_crypto::verify_ed25519;
+use anon_credit_protocol::admin::{AdminSnapshot, GatewayEvent, SessionDetail};
 use anon_credit_protocol::api::{
     DemoPeerResponse, GatewayConfigResponse, GatewayErrorBody, OpenRequest, OpenResponse,
     PricesResponse, RootsResponse, SPEND_RESPONSE_HEADERS, SpendRequest, StatusRequest,
@@ -185,6 +186,7 @@ fn round_trip<T: DeserializeOwned + serde::Serialize>(value: &Value) -> Result<(
 fn parse_as(kind: &str, value: &Value) -> Result<(), String> {
     let base = kind.trim_end_matches("_without_receipt");
     let base = base.trim_end_matches("_with_receipt");
+    let base = base.trim_end_matches("_demo");
     match base {
         "open_request" => round_trip::<OpenRequest>(value),
         "open_response" => round_trip::<OpenResponse>(value),
@@ -196,6 +198,9 @@ fn parse_as(kind: &str, value: &Value) -> Result<(), String> {
         "prices_response" => round_trip::<PricesResponse>(value),
         "roots_response" => round_trip::<RootsResponse>(value),
         "demo_peer_response" => round_trip::<DemoPeerResponse>(value),
+        "gateway_event" => round_trip::<GatewayEvent>(value),
+        "admin_snapshot" => round_trip::<AdminSnapshot>(value),
+        "session_detail" => round_trip::<SessionDetail>(value),
         other => panic!("unknown envelope type {other}"),
     }
 }
