@@ -14,7 +14,9 @@ workspace = true
 anon-credit-crypto.workspace = true
 anon-credit-protocol.workspace = true
 anon-credit-registry.workspace = true
-alloy.workspace = true
+# The issuer signs postRoot transactions, so it needs the local signer, the network
+# transaction builder, and the consensus encoding. These features add to the workspace set.
+alloy = { workspace = true, features = ["signer-local", "network", "consensus", "eips"] }
 anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
@@ -22,8 +24,15 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+# tower-http 0.6.11 is already in Cargo.lock (through alloy). The CORS layer is for GET only.
+tower-http = { version = "0.6.11", features = ["cors"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+hex.workspace = true
+# tower 0.5.3 is already in Cargo.lock. The tests call the router with `oneshot`.
+tower = { version = "0.5.3", features = ["util"] }
 
 [[bin]]
 name = "issuer"

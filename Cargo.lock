@@ -46,6 +46,8 @@ dependencies = [
  "alloy-rpc-client",
  "alloy-rpc-types",
  "alloy-serde",
+ "alloy-signer",
+ "alloy-signer-local",
  "alloy-transport",
  "alloy-transport-http",
  "alloy-trie",
@@ -531,6 +533,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloy-signer-local"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6909c09d586c7b55eced688754d57dde8a6bcbae2b83e69a9b9250e74cfd79e"
+dependencies = [
+ "alloy-consensus",
+ "alloy-network",
+ "alloy-primitives",
+ "alloy-signer",
+ "async-trait",
+ "k256",
+ "rand 0.8.8",
+ "thiserror",
+]
+
+[[package]]
 name = "alloy-sol-macro"
 version = "1.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -724,11 +742,14 @@ dependencies = [
  "anon-credit-registry",
  "anyhow",
  "axum",
+ "hex",
  "serde",
  "serde_json",
  "sqlx",
  "thiserror",
  "tokio",
+ "tower",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
 ]
