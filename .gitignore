@@ -32,6 +32,10 @@ artifacts/**
 !artifacts/provekit-sample/
 !artifacts/provekit-sample/*
 artifacts/provekit-sample/prover-manifest.json
+# Batch-open ProveKit artifacts (keys, witness, proofs, manifest; under 3 MB in total).
+!artifacts/batch-open-results.json
+!artifacts/batch-open/
+!artifacts/batch-open/*
 
 # Local databases
 *.db
