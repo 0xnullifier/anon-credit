@@ -1,0 +1,27 @@
+{
+  "description": "Deployment ID vectors. message = fixed binary encoding from crates/protocol/src/deployment.rs. deployment_id = keccak256(message).",
+  "encoding": "All hex is 0x-prefixed lowercase. payment_chain_id is a decimal string (u64).",
+  "cases": [
+    {
+      "name": "sepolia_testnet_profile",
+      "input": {
+        "batch_size": 100,
+        "circuit_id": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+        "credit_lifetime_epochs": 35040,
+        "epoch_seconds": 30,
+        "gateway_id": "0x606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+        "issuer_address": "0x505152535455565758595a5b5c5d5e5f60616263",
+        "payment_chain_id": "11155111",
+        "protocol_version": 1,
+        "prover_manifest_hash": "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+        "root_registry_address": "0x303132333435363738393a3b3c3d3e3f40414243",
+        "sale_address": "0x101112131415161718191a1b1c1d1e1f20212223",
+        "verifier_artifact_hash": "0xc2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2"
+      },
+      "expected": {
+        "encoding": "0x616e6f6e2d6372656469742f6465706c6f796d656e740000000000000000000000010000000000aa36a7101112131415161718191a1b1c1d1e1f20212223303132333435363738393a3b3c3d3e3f40414243505152535455565758595a5b5c5d5e5f60616263606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f000000640000001e000088e0c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+        "deployment_id": "0xfe27240751120d40a434701376e2ca605e9c351a4cb555f1e08051b1868a472c"
+      }
+    }
+  ]
+}

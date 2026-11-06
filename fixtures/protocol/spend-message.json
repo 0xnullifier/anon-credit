@@ -1,0 +1,64 @@
+{
+  "description": "Spend signing message vectors. message = encoding from implementation.md section 9. digest = keccak256(message). signature = Ed25519 over digest.",
+  "encoding": "All hex is 0x-prefixed lowercase. seq and units_total are decimal strings (u64).",
+  "protocol_version": 1,
+  "operation_domain": "0x616e6f6e2d6372656469742f7370656e64000000000000000000000000000000",
+  "test_signing_key": {
+    "note": "Public test key from RFC 8032 section 7.1 TEST 1. Not a secret. Never use it for real value.",
+    "seed": "0x9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+    "public_key": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+  },
+  "cases": [
+    {
+      "name": "first_request",
+      "input": {
+        "batch_id": "0xb0b1b2b3b4b5b6b7b8b9babbbcbdbebfb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "deployment_id": "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+        "gateway_id": "0x2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+        "price_table_hash": "0xfffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
+        "rpc_bytes": "0x7b226a736f6e727063223a22322e30222c226964223a312c226d6574686f64223a226574685f636861696e4964222c22706172616d73223a5b5d7d",
+        "seq": "0",
+        "units_total": "1"
+      },
+      "expected": {
+        "message": "0x616e6f6e2d6372656469742f7370656e6400000000000000000000000000000000010102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40b0b1b2b3b4b5b6b7b8b9babbbcbdbebfb0b1b2b3b4b5b6b7b8b9babbbcbdbebffffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0000000000000000000000000000000010000003b7b226a736f6e727063223a22322e30222c226964223a312c226d6574686f64223a226574685f636861696e4964222c22706172616d73223a5b5d7d",
+        "digest": "0xed33881ca898c65005c0baf6bb7fe6d38d0ed3e3339802f75c51e9a9dd0f5bf8",
+        "signature": "0x9665058337dad31fc9b882c6e98aecaac6f204b0868b40f3b840e065de95f40c25bd3007ef2c425a16a17e94f8fe30d025e7f68ccb53077bfbe75c9dabfed80c"
+      }
+    },
+    {
+      "name": "max_u64_and_utf8",
+      "input": {
+        "batch_id": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "deployment_id": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "gateway_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "price_table_hash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "rpc_bytes": "0x7b226a736f6e727063223a22322e30222c226964223a22c3a9e282ac222c226d6574686f64223a226574685f626c6f636b4e756d626572222c22706172616d73223a5b5d7d",
+        "seq": "18446744073709551615",
+        "units_total": "18446744073709551615"
+      },
+      "expected": {
+        "message": "0x616e6f6e2d6372656469742f7370656e640000000000000000000000000000000001aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddffffffffffffffffffffffffffffffff000000457b226a736f6e727063223a22322e30222c226964223a22c3a9e282ac222c226d6574686f64223a226574685f626c6f636b4e756d626572222c22706172616d73223a5b5d7d",
+        "digest": "0xe7e3dcd5cdcef856a3d4f5baadb9bfcb78eea564b06c3f89e00de5338e54fb4e",
+        "signature": "0x544128f8e9d03937900fbc8e36b894b96d1c2e1eb9ddc31a39a4a201e59de135ef6538d07700196296bcbac6cf0ea214b2330e6c6cff9dad8793e5951d547102"
+      }
+    },
+    {
+      "name": "above_js_safe_integer_and_empty_rpc",
+      "input": {
+        "batch_id": "0x0202020202020202020202020202020202020202020202020202020202020202",
+        "deployment_id": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "gateway_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+        "price_table_hash": "0x0303030303030303030303030303030303030303030303030303030303030303",
+        "rpc_bytes": "0x",
+        "seq": "9007199254740993",
+        "units_total": "9007199254740995"
+      },
+      "expected": {
+        "message": "0x616e6f6e2d6372656469742f7370656e64000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000101010101010101010101010101010101010101010101010101010101010101020202020202020202020202020202020202020202020202020202020202020203030303030303030303030303030303030303030303030303030303030303030020000000000001002000000000000300000000",
+        "digest": "0x543e21bc83a6cb85c02f81f36b0d2bcede33db71226e65301e13646fed6e2cf6",
+        "signature": "0xaa83266de2b6bbb9227b366342a84156ca88821395a19fecaf706b6231091732ac02239df29e1b8dddcaa8d1de934cf71847c8432dfe211e3edf769c018db70a"
+      }
+    }
+  ]
+}

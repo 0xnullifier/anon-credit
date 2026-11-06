@@ -1,0 +1,69 @@
+{
+  "description": "Stable error codes and retryable flags. Rust and TypeScript must match this list exactly, in this order.",
+  "codes": [
+    {
+      "code": "invalid_request",
+      "retryable": false
+    },
+    {
+      "code": "unsupported_version",
+      "retryable": false
+    },
+    {
+      "code": "proof_invalid",
+      "retryable": false
+    },
+    {
+      "code": "root_not_accepted",
+      "retryable": false
+    },
+    {
+      "code": "proof_epoch_stale",
+      "retryable": false
+    },
+    {
+      "code": "session_conflict",
+      "retryable": false
+    },
+    {
+      "code": "signature_invalid",
+      "retryable": false
+    },
+    {
+      "code": "sequence_gap",
+      "retryable": false
+    },
+    {
+      "code": "sequence_conflict",
+      "retryable": false
+    },
+    {
+      "code": "response_expired",
+      "retryable": false
+    },
+    {
+      "code": "insufficient_units",
+      "retryable": false
+    },
+    {
+      "code": "session_expired",
+      "retryable": false
+    },
+    {
+      "code": "method_not_allowed",
+      "retryable": false
+    },
+    {
+      "code": "upstream_failed",
+      "retryable": true
+    },
+    {
+      "code": "storage_unavailable",
+      "retryable": true
+    },
+    {
+      "code": "busy",
+      "retryable": true
+    }
+  ]
+}
