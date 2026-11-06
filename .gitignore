@@ -48,6 +48,10 @@ artifacts/provekit-sample/prover-manifest.json
 .env.*
 !.env.example
 !config/*.env.example
+# Filled demo profile and deployment file (tooling/deploy/deploy-sepolia.sh writes the second).
+config/testnet-demo.env
+config/production.env
+config/deployment.testnet.toml
 *.key
 *.pem
 
