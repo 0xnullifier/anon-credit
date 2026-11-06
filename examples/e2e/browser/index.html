@@ -2,11 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>anon-credit e2e page</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; }
+      #log { white-space: pre-wrap; font-family: ui-monospace, monospace; }
+    </style>
   </head>
   <body>
-    <!-- Phase 4: load the SDK, the prover worker, and the Anon-RPC harness here. -->
-    <!-- The harness needs document.body. Load the module script at the end of the body. -->
-    <p>Phase 0 placeholder.</p>
+    <h1>anon-credit end-to-end page</h1>
+    <p>
+      This page hosts the ProveKit prover worker, the client SDK, and the Anon-RPC harness. The Node runner
+      drives it. It shows progress only; it never shows secrets.
+    </p>
+    <div id="log"></div>
+    <!-- The Anon-RPC harness needs document.body. Load the module script at the end of the body. -->
+    <script type="module" src="./main.ts"></script>
   </body>
 </html>
