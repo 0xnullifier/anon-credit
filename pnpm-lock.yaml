@@ -246,6 +246,9 @@ importers:
 
   packages/prover:
     dependencies:
+      '@anon-credit/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       '@anon-credit/protocol':
         specifier: workspace:*
         version: link:../protocol

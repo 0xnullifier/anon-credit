@@ -11,6 +11,15 @@
 // the "zk" witness mode, and the Rust verifier rejects a non-hiding verifier key.
 
 export { fetchBytes, fetchVerified, type FetchFunction } from "./artifacts.ts";
+export {
+  BATCH_OPEN_ABI_PARAMETERS,
+  BATCH_OPEN_CIRCUIT,
+  BATCH_OPEN_PUBLIC_INPUT_COUNT,
+  abiTypeText,
+  batchOpenInputsSchema,
+  checkBatchOpenAbi,
+  type BatchOpenInputs,
+} from "./batch-open.ts";
 export { createBatchOpenProver, type BatchOpenProver, type ProverOptions, type WorkerLike } from "./client.ts";
 export { sha256Hex, sha256HexSchema } from "./digest.ts";
 export { ProverError, proverErrorCodeSchema, type ProverErrorCode } from "./errors.ts";

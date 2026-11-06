@@ -12,6 +12,8 @@ export const proverErrorCodeSchema = z.enum([
   "artifact_digest_mismatch",
   // The WASM module or its JavaScript glue is not valid.
   "wasm_invalid",
+  // The prover key is not the circuit that the manifest names.
+  "circuit_mismatch",
   // The threaded build needs cross-origin isolation and SharedArrayBuffer.
   "threads_unavailable",
   // The circuit inputs do not satisfy the circuit.

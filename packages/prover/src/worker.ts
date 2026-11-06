@@ -7,6 +7,7 @@
 import { Noir, acvm, type CompiledCircuit, type InputMap } from "@noir-lang/noir_js";
 import { z } from "zod";
 import { fetchVerified, type FetchFunction } from "./artifacts.ts";
+import { BATCH_OPEN_CIRCUIT, BATCH_OPEN_PUBLIC_INPUT_COUNT, checkBatchOpenAbi } from "./batch-open.ts";
 import { ProverError, type ProverErrorCode } from "./errors.ts";
 import { parseCircuit } from "./inputs.ts";
 import { loadManifest, type FileEntry, type ProverManifest } from "./manifest.ts";
@@ -109,6 +110,20 @@ function selectVariant(manifest: ProverManifest, mode: ThreadMode): Variant {
   }
 }
 
+// A manifest that names a known circuit must carry the prover key of that circuit.
+function checkCircuit(manifest: ProverManifest, circuit: CompiledCircuit): void {
+  switch (manifest.circuit) {
+    case BATCH_OPEN_CIRCUIT:
+      checkBatchOpenAbi(circuit.abi);
+      if (manifest.numPublicInputs !== BATCH_OPEN_PUBLIC_INPUT_COUNT) {
+        throw new ProverError("circuit_mismatch", `the batch-open manifest has ${manifest.numPublicInputs} public inputs`);
+      }
+      return;
+    default:
+      return;
+  }
+}
+
 async function load(
   manifestUrl: URL,
   manifestSha256: string,
@@ -154,6 +169,7 @@ async function load(
   } finally {
     probe.free();
   }
+  checkCircuit(manifest, circuit);
   const noir = new Noir(circuit);
   await noir.init();
 
