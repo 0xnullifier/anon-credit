@@ -11,12 +11,14 @@ use crate::locks::BatchLocks;
 use crate::peer::PeerPolicy;
 use crate::roots::RootTracker;
 use crate::store::{ReceiptRow, SessionRow, Store, StoredState};
+use crate::upload::{UploadLimits, UploadStore};
 use crate::upstream::Upstream;
 use crate::verifier::{ProofVerifier, VerifyQueue};
-use crate::{admin, open, public, spend, status};
+use crate::{admin, open, public, spend, status, upload};
 use anon_credit_protocol::admin::VerifierStatus;
 use anon_credit_protocol::api::{
-    GatewayLimits, ReceiptMetadata, SPEND_RESPONSE_HEADERS, SessionState, SessionStatus,
+    GatewayLimits, OPEN_CHUNK_BODY_LIMIT_BYTES, OPEN_CHUNK_MAX_BYTES, ReceiptMetadata,
+    SPEND_RESPONSE_HEADERS, SessionState, SessionStatus,
 };
 use anon_credit_protocol::{Bytes32, DecimalU64, DeploymentConfig, ErrorCode, PriceTable};
 use axum::Router;
@@ -24,7 +26,7 @@ use axum::body::Bytes;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::rejection::BytesRejection;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode, header};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use std::sync::Arc;
 use std::time::Duration;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -48,6 +50,8 @@ pub struct Limits {
     pub response_retention_secs: u64,
     /// Time that a spend request waits for the batch lock.
     pub batch_lock_wait: Duration,
+    /// Limits of chunked proof uploads (`PUT /v1/open/chunks`).
+    pub upload: UploadLimits,
 }
 
 impl Default for Limits {
@@ -61,6 +65,7 @@ impl Default for Limits {
             proof_queue_depth: 8,
             response_retention_secs: 60,
             batch_lock_wait: Duration::from_secs(5),
+            upload: UploadLimits::default(),
         }
     }
 }
@@ -81,6 +86,13 @@ impl Limits {
             proof_queue_depth: clamp_u32(self.proof_queue_depth as u128),
             response_retention_seconds: clamp_u32(u128::from(self.response_retention_secs)),
             batch_lock_wait_ms: clamp_u32(self.batch_lock_wait.as_millis()),
+            open_upload_max_bytes: clamp_u32(self.upload.max_bytes as u128),
+            open_upload_chunk_bytes: clamp_u32(OPEN_CHUNK_MAX_BYTES as u128),
+            open_upload_chunk_body_bytes: clamp_u32(OPEN_CHUNK_BODY_LIMIT_BYTES as u128),
+            open_upload_max_chunks: self.upload.max_chunks,
+            open_upload_ttl_seconds: clamp_u32(u128::from(self.upload.ttl_secs)),
+            open_upload_max_pending: clamp_u32(self.upload.max_pending as u128),
+            open_upload_max_pending_bytes: clamp_u32(self.upload.max_pending_bytes as u128),
         }
     }
 }
@@ -176,6 +188,8 @@ pub struct Gateway {
     pub events: EventBus,
     /// Per-batch locks.
     pub locks: BatchLocks,
+    /// Pending chunked proof uploads.
+    pub uploads: UploadStore,
     /// Observed source address rules.
     pub peer: PeerPolicy,
     /// Start time in Unix seconds.
@@ -195,6 +209,7 @@ impl Gateway {
             events: EventBus::new(Arc::clone(&parts.clock)),
             verify_queue,
             locks: BatchLocks::new(),
+            uploads: UploadStore::new(limits.upload),
             config: parts.config,
             store: parts.store,
             clock: parts.clock,
@@ -273,7 +288,7 @@ pub fn read_body(body: Result<Bytes, BytesRejection>) -> Result<Bytes, ApiError>
 fn cors(origins: &[HeaderValue], admin: bool) -> CorsLayer {
     let mut layer = CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins.iter().cloned()))
-        .allow_methods([Method::GET, Method::POST]);
+        .allow_methods([Method::GET, Method::POST, Method::PUT]);
     match admin {
         true => {
             layer = layer.allow_headers([
@@ -305,6 +320,10 @@ pub fn public_router(gateway: SharedGateway) -> Router {
         .route(
             "/v1/open",
             post(open::open).layer(DefaultBodyLimit::max(limits.open_body_bytes)),
+        )
+        .route(
+            "/v1/open/chunks",
+            put(upload::put_chunk).layer(DefaultBodyLimit::max(OPEN_CHUNK_BODY_LIMIT_BYTES)),
         )
         .route(
             "/v1/rpc",

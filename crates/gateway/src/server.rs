@@ -239,9 +239,14 @@ pub async fn refresh_roots(gateway: &SharedGateway) {
     }
 }
 
-/// Remove expired response bytes, sessions after retention, and old cached roots.
+/// Remove expired response bytes, expired proof uploads, sessions after retention, and old
+/// cached roots.
 pub async fn prune(gateway: &SharedGateway, sessions_too: bool) {
     let now = gateway.clock.now_unix();
+    let evicted = gateway.uploads.evict_expired(now);
+    if evicted > 0 {
+        tracing::info!(count = evicted, "deleted expired proof uploads");
+    }
     let cutoff = now.saturating_sub(gateway.config.limits.response_retention_secs);
     if let Err(error) = gateway.store.prune_responses(cutoff).await {
         tracing::warn!(error = %error, "response pruning failed");
