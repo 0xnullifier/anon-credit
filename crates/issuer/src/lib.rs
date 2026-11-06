@@ -1,14 +1,21 @@
 //! The issuer service library.
 //!
-//! Later phases add these modules here:
-//!
-//! - Phase 2 `indexer`: read `CreditSale` events, check contract, chain, receipt, and
-//!   canonical block, and wait for Sepolia finality.
-//! - Phase 2 `issuance`: key each payment by `(chain_id, tx_hash, log_index)` and append
-//!   leaves in one database transaction.
-//! - Phase 2 `publisher`: persist, submit, and reconcile one root publication per epoch.
-//! - Phase 2 `http`: the `/v1` issuer API from implementation.md section 10.
+//! - [`chain`]: the chain interface and the contract bindings.
+//! - [`rpc_chain`]: the JSON-RPC implementation of the chain interface (alloy).
+//! - [`verify`]: the checks of a payment against the chain.
+//! - [`db`]: the issuer database schema and queries.
+//! - [`service`]: issuance, the sale indexer, and the root publisher.
+//! - [`http`]: the `/v1` issuer API from implementation.md section 10.
+//! - [`clock`]: the clock and the epoch arithmetic.
+//! - [`settings`]: the settings from environment variables.
 //!
 //! The issuer owns payment records. The gateway must never import them.
 
+pub mod chain;
+pub mod clock;
+pub mod db;
+pub mod http;
+pub mod rpc_chain;
+pub mod service;
 pub mod settings;
+pub mod verify;
