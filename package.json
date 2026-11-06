@@ -11,7 +11,8 @@
     "test": "pnpm -r test",
     "check": "./check.sh",
     "dashboard:dev": "pnpm --filter @anon-credit/dashboard dev",
-    "example:e2e": "pnpm --filter @anon-credit/example-e2e start"
+    "example:e2e": "pnpm --filter @anon-credit/example-e2e start",
+    "test:integration": "tooling/dev/integration.sh"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

@@ -7,6 +7,7 @@
 # Noir: the circuits need nargo 1.0.0-beta.26 (tooling/provekit/pins.env). If it is missing,
 # the circuit step fails and tells how to install it.
 # Set SKIP_OPTIONAL=1 to skip the Foundry, Noir, and ProveKit steps.
+# Set INTEGRATION=1 to also run the local phase 4 integration harness (anvil, services, Chromium).
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -104,6 +105,11 @@ if [ "${PROVEKIT_GATE:-0}" = "1" ]; then
   node packages/prover/dev/gate.ts --circuit sample
   step "ProveKit browser gate, batch-open circuit (real 100-leaf witness)"
   node packages/prover/dev/gate.ts --circuit batch-open
+fi
+
+if [ "${INTEGRATION:-0}" = "1" ]; then
+  step "local integration harness (anvil, sidecar, issuer, gateway, Chromium)"
+  tooling/dev/integration.sh
 fi
 
 printf '\nAll checks passed.\n'
