@@ -11,6 +11,10 @@ import {
   demoPeerResponseSchema,
   gatewayConfigResponseSchema,
   gatewayErrorBodySchema,
+  OPEN_CHUNK_BODY_LIMIT_BYTES,
+  OPEN_CHUNK_MAX_BYTES,
+  openChunkRequestSchema,
+  openChunkResponseSchema,
   openMessageFromRequest,
   openRequestSchema,
   openResponseSchema,
@@ -54,9 +58,13 @@ function outcome<T extends object>(result: z.ZodSafeParseResult<T>): Outcome {
 
 // Parse a value with the schema of its envelope type.
 function parseAs(kind: string, value: Json): Outcome {
-  switch (kind.replace(/_with(out)?_receipt$/, "").replace(/_demo$/, "")) {
+  switch (kind.replace(/_with(out)?_receipt$/, "").replace(/_demo$/, "").replace(/_upload$/, "")) {
     case "open_request":
       return outcome(openRequestSchema.safeParse(value));
+    case "open_chunk_request":
+      return outcome(openChunkRequestSchema.safeParse(value));
+    case "open_chunk_response":
+      return outcome(openChunkResponseSchema.safeParse(value));
     case "open_response":
       return outcome(openResponseSchema.safeParse(value));
     case "spend_request":
@@ -114,6 +122,28 @@ describe("gateway api shared examples", () => {
     const digest = openMessageDigest(openMessageFromRequest(request));
     const sessionPub = openMessageFromRequest(request).sessionPub;
     expect(ed25519.verify(decodeBase64(request.signature), digest, sessionPub)).toBe(true);
+  });
+
+  it("signs the same open message with an upload reference", () => {
+    const inline = openRequestSchema.parse(file.valid["open_request"]);
+    const upload = openRequestSchema.parse(file.valid["open_request_upload"]);
+    expect(openMessageDigest(openMessageFromRequest(upload))).toEqual(openMessageDigest(openMessageFromRequest(inline)));
+    expect("proof_upload" in upload && !("proof" in upload)).toBe(true);
+  });
+
+  it("keeps the largest chunk envelope below the body limit", () => {
+    const chunk = openChunkRequestSchema.parse({
+      batch_id: `0x${"ff".repeat(32)}`,
+      proof_sha256: `0x${"ff".repeat(32)}`,
+      total_bytes: 4_294_967_295,
+      chunk_index: 4_294_967_295,
+      chunk_count: 4_294_967_295,
+      data: encodeBase64(new Uint8Array(OPEN_CHUNK_MAX_BYTES).fill(0xff)),
+    });
+    // The envelope is ASCII, so the string length is the byte length.
+    const size = JSON.stringify(chunk).length;
+    expect(size).toBeLessThan(OPEN_CHUNK_BODY_LIMIT_BYTES);
+    expect(OPEN_CHUNK_BODY_LIMIT_BYTES).toBeLessThanOrEqual(40_000);
   });
 });
 

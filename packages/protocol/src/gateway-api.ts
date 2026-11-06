@@ -37,8 +37,47 @@ const u16Schema = z.number().int().min(0).max(MAX_U16);
 const u32Schema = z.number().int().min(0).max(MAX_U32);
 const safeChainIdSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 
-// POST /v1/open request body.
-export const openRequestSchema = z.strictObject({
+// Largest raw data of one PUT /v1/open/chunks chunk: 24 KiB.
+export const OPEN_CHUNK_MAX_BYTES = 24 * 1024;
+// Largest PUT /v1/open/chunks body. A chunk with OPEN_CHUNK_MAX_BYTES of data is about
+// 33,000 bytes of JSON. The Nox worker refuses bodies above about 48,000 bytes.
+export const OPEN_CHUNK_BODY_LIMIT_BYTES = 40_000;
+
+// Encoding of the proof bytes of a chunked upload.
+// "np": binary ProveKit proof. "json": JSON proof as the browser prover emits it.
+// "json+gzip": JSON proof in gzip; the gateway decompresses it with a size limit.
+export const proofEncodingSchema = z.enum(["np", "json", "json+gzip"]);
+export type ProofEncoding = z.output<typeof proofEncodingSchema>;
+
+// Reference to a complete chunked proof upload. proof_sha256 and total_bytes describe the
+// uploaded bytes (after the encoding, before decompression).
+export const proofUploadSchema = z.strictObject({
+  proof_sha256: hex32TextSchema,
+  total_bytes: u32Schema,
+  proof_encoding: proofEncodingSchema,
+});
+export type ProofUpload = z.output<typeof proofUploadSchema>;
+
+// PUT /v1/open/chunks request body: one chunk of a proof upload. The gateway keys an upload by
+// (batch_id, proof_sha256). Chunks can arrive in any order.
+export const openChunkRequestSchema = z.strictObject({
+  batch_id: hex32TextSchema,
+  proof_sha256: hex32TextSchema,
+  total_bytes: u32Schema,
+  chunk_index: u32Schema,
+  chunk_count: u32Schema,
+  data: base64TextSchema,
+});
+export type OpenChunkRequest = z.output<typeof openChunkRequestSchema>;
+
+// PUT /v1/open/chunks response body.
+export const openChunkResponseSchema = z.strictObject({
+  received_chunks: u32Schema,
+  complete: z.boolean(),
+});
+export type OpenChunkResponse = z.output<typeof openChunkResponseSchema>;
+
+const openRequestFields = {
   protocol_version: u16Schema,
   deployment_id: hex32TextSchema,
   gateway_id: hex32TextSchema,
@@ -48,9 +87,20 @@ export const openRequestSchema = z.strictObject({
   proof_epoch: decimalU64TextSchema,
   session_pub: hex32TextSchema,
   price_table_hash: hex32TextSchema,
-  proof: base64TextSchema,
   signature: signatureTextSchema,
-});
+};
+
+// POST /v1/open request body with the inline proof.
+export const inlineOpenRequestSchema = z.strictObject({ ...openRequestFields, proof: base64TextSchema });
+export type InlineOpenRequest = z.output<typeof inlineOpenRequestSchema>;
+
+// POST /v1/open request body with a reference to a complete chunked upload.
+export const uploadOpenRequestSchema = z.strictObject({ ...openRequestFields, proof_upload: proofUploadSchema });
+export type UploadOpenRequest = z.output<typeof uploadOpenRequestSchema>;
+
+// POST /v1/open request body: exactly one of proof and proof_upload. The open signature
+// does not cover the proof.
+export const openRequestSchema = z.union([inlineOpenRequestSchema, uploadOpenRequestSchema]);
 export type OpenRequest = z.output<typeof openRequestSchema>;
 
 export const sessionStatusSchema = z.enum(["active", "exhausted", "expired"]);
@@ -155,6 +205,13 @@ export const gatewayLimitsSchema = z.strictObject({
   proof_queue_depth: u32Schema,
   response_retention_seconds: u32Schema,
   batch_lock_wait_ms: u32Schema,
+  open_upload_max_bytes: u32Schema,
+  open_upload_chunk_bytes: u32Schema,
+  open_upload_chunk_body_bytes: u32Schema,
+  open_upload_max_chunks: u32Schema,
+  open_upload_ttl_seconds: u32Schema,
+  open_upload_max_pending: u32Schema,
+  open_upload_max_pending_bytes: u32Schema,
 });
 export type GatewayLimits = z.output<typeof gatewayLimitsSchema>;
 
