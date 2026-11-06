@@ -1,6 +1,7 @@
 //! Verification tests against the checked-in sample artifacts in `artifacts/provekit-sample/`.
 //!
-//! `tooling/provekit/prepare-sample.sh` makes these artifacts.
+//! `tooling/provekit/prepare-sample.sh` makes these artifacts. The browser gate
+//! (`GATE_WRITE_FIXTURE=1 node packages/prover/dev/gate.ts`) writes `proof.browser.json`.
 
 // Test helpers outside `#[test]` functions also stop on bad fixtures.
 #![allow(clippy::unwrap_used, clippy::panic)]
@@ -95,6 +96,16 @@ fn valid_json_proof_verifies() {
     verifier().verify(&proof, &expected()).unwrap();
 }
 
+/// The phase 1 gate: a proof from the WASM prover in headless Chromium verifies natively.
+#[test]
+fn browser_proof_verifies() {
+    let path = artifact("proof.browser.json");
+    let bytes = std::fs::read(&path).unwrap();
+    let proof = decode(&bytes);
+    assert_eq!(proof.encoding(), ProofEncoding::Json);
+    verifier().verify(&proof, &expected()).unwrap();
+}
+
 #[test]
 fn verifier_is_reusable() {
     let verifier = verifier();
@@ -105,7 +116,7 @@ fn verifier_is_reusable() {
 
 #[test]
 fn proof_with_flipped_byte_fails() {
-    let json = read("proof.native.json");
+    let json = read("proof.browser.json");
     for field in ["narg_string", "hints"] {
         let proof = decode(&flip_char(&json, field));
         let error = verifier().verify(&proof, &expected()).unwrap_err();
@@ -134,7 +145,7 @@ fn binary_proof_with_flipped_byte_fails() {
 
 #[test]
 fn proof_with_altered_public_input_fails() {
-    let json = read("proof.native.json");
+    let json = read("proof.browser.json");
     let altered_values = [
         PublicInput::from_hex("0x1234").unwrap(),
         PublicInput::from_hex("0x1").unwrap(),
