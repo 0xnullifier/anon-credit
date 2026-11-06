@@ -9,8 +9,11 @@
 //!   call, and one durable commit of debit, sequence, response bytes, and receipt.
 //! - [`status`]: `POST /v1/session/status`. Signed status for client recovery.
 //! - [`public`]: `GET /v1/config`, `/v1/prices`, `/v1/roots`, and the demo peer probe.
-//! - [`admin`]: snapshot, Server-Sent Events, and session views on the private listener.
-//! - [`roots`]: finalized roots from `RootRegistry`, independent of the issuer.
+//! - [`admin`]: snapshot (with the price table and the accepted roots), Server-Sent Events,
+//!   and session views on the private listener.
+//! - [`roots`]: finalized roots. The source is `RootRegistry` at the `finalized` tag (the
+//!   default, independent of the issuer) or the issuer `GET /v1/roots` (`issuer-http`, local
+//!   runs only; it trusts the issuer). `GATEWAY_ROOT_SOURCE` selects the source.
 //! - [`verifier`]: the ProveKit verifier sidecar client and the bounded queue.
 //! - [`upstream`]: the upstream JSON-RPC client with limits.
 //! - [`store`]: SQLite sessions, receipts, and the root cache.
