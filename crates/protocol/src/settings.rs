@@ -6,7 +6,9 @@
 //! Secrets (keys, tokens, RPC URLs that can contain API keys) come only from the
 //! environment. Never write them into tracked configuration. Never print their values.
 
+use crate::deployment::{DeploymentConfig, EPOCH_SECONDS_TESTNET};
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 /// Default issuer HTTP port.
@@ -31,6 +33,100 @@ pub enum SettingsError {
         /// Reason for the failure.
         reason: String,
     },
+}
+
+/// Name of the variable with the epoch length in seconds.
+pub const EPOCH_SECONDS_VAR: &str = "EPOCH_SECONDS";
+/// Name of the variable with the path of the deployment TOML file.
+pub const DEPLOYMENT_CONFIG_VAR: &str = "DEPLOYMENT_CONFIG";
+
+/// Settings that the issuer and the gateway share.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommonSettings {
+    /// Epoch length in seconds. Testnet uses 30. Production uses 900.
+    pub epoch_seconds: u32,
+    /// Deployment file path and its parsed contents, if `DEPLOYMENT_CONFIG` is set.
+    pub deployment: Option<(PathBuf, DeploymentConfig)>,
+}
+
+impl CommonSettings {
+    /// Read the shared settings.
+    ///
+    /// If a deployment file is set, its `epoch_seconds` is the effective value.
+    /// Then `EPOCH_SECONDS`, if set, must have the same value. A mismatch is an error,
+    /// because the epoch length is part of `deployment_id`.
+    pub fn from_lookup(lookup: &impl Fn(&str) -> Option<String>) -> Result<Self, SettingsError> {
+        let env_epoch: Option<u32> = match read_optional(lookup, EPOCH_SECONDS_VAR) {
+            None => None,
+            Some(text) => Some(text.parse::<u32>().map_err(|e| SettingsError::Invalid {
+                name: EPOCH_SECONDS_VAR,
+                reason: e.to_string(),
+            })?),
+        };
+        if env_epoch == Some(0) {
+            return Err(SettingsError::Invalid {
+                name: EPOCH_SECONDS_VAR,
+                reason: "must be greater than zero".to_owned(),
+            });
+        }
+        let deployment = match read_optional(lookup, DEPLOYMENT_CONFIG_VAR) {
+            None => None,
+            Some(path) => {
+                let path = PathBuf::from(path);
+                let text = std::fs::read_to_string(&path).map_err(|e| SettingsError::Invalid {
+                    name: DEPLOYMENT_CONFIG_VAR,
+                    reason: format!("cannot read {}: {e}", path.display()),
+                })?;
+                let config =
+                    DeploymentConfig::from_toml_str(&text).map_err(|e| SettingsError::Invalid {
+                        name: DEPLOYMENT_CONFIG_VAR,
+                        reason: e.to_string(),
+                    })?;
+                Some((path, config))
+            }
+        };
+        let epoch_seconds = match (&deployment, env_epoch) {
+            (Some((_, config)), Some(value)) if value != config.epoch_seconds => {
+                return Err(SettingsError::Invalid {
+                    name: EPOCH_SECONDS_VAR,
+                    reason: format!(
+                        "value {value} differs from deployment epoch_seconds {}",
+                        config.epoch_seconds
+                    ),
+                });
+            }
+            (Some((_, config)), _) => config.epoch_seconds,
+            (None, Some(value)) => value,
+            (None, None) => EPOCH_SECONDS_TESTNET,
+        };
+        Ok(Self {
+            epoch_seconds,
+            deployment,
+        })
+    }
+
+    /// Write the summary lines for the shared settings.
+    pub fn summary_lines(&self) -> Vec<String> {
+        let mut lines = vec![format!("epoch_seconds: {}", self.epoch_seconds)];
+        match &self.deployment {
+            None => lines.push("deployment: not set (DEPLOYMENT_CONFIG)".to_owned()),
+            Some((path, config)) => {
+                lines.push(format!("deployment file: {}", path.display()));
+                lines.push(format!("deployment_id: {}", config.deployment_id()));
+                lines.push(format!("payment_chain_id: {}", config.payment_chain_id));
+                lines.push(format!("gateway_id: {}", config.gateway_id));
+                lines.push(format!("batch_size: {}", config.batch_size));
+                let placeholders = config.placeholder_fields();
+                if !placeholders.is_empty() {
+                    lines.push(format!(
+                        "WARNING: placeholder values in: {}",
+                        placeholders.join(", ")
+                    ));
+                }
+            }
+        }
+        lines
+    }
 }
 
 /// Read a strict boolean. Accept only `true` or `false`.
@@ -130,6 +226,36 @@ mod tests {
         let addr = read_bind(&lookup, "BIND", GATEWAY_ADMIN_PORT).unwrap();
         assert!(addr.ip().is_loopback());
         assert_eq!(addr.port(), 8082);
+    }
+
+    #[test]
+    fn common_defaults_to_testnet_epoch() {
+        let settings = CommonSettings::from_lookup(&env(&[])).unwrap();
+        assert_eq!(settings.epoch_seconds, 30);
+        assert!(settings.deployment.is_none());
+    }
+
+    #[test]
+    fn common_reads_epoch_and_rejects_zero() {
+        let settings = CommonSettings::from_lookup(&env(&[("EPOCH_SECONDS", "900")])).unwrap();
+        assert_eq!(settings.epoch_seconds, 900);
+        assert!(CommonSettings::from_lookup(&env(&[("EPOCH_SECONDS", "0")])).is_err());
+    }
+
+    #[test]
+    fn common_rejects_epoch_mismatch_with_template() {
+        let template = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../config/deployment.testnet.template.toml"
+        );
+        let settings =
+            CommonSettings::from_lookup(&env(&[("DEPLOYMENT_CONFIG", template)])).unwrap();
+        assert_eq!(settings.epoch_seconds, 30);
+        let mismatch = CommonSettings::from_lookup(&env(&[
+            ("DEPLOYMENT_CONFIG", template),
+            ("EPOCH_SECONDS", "900"),
+        ]));
+        assert!(mismatch.is_err());
     }
 
     #[test]

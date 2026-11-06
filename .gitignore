@@ -52,3 +52,6 @@ test-results/
 
 # Reference demo build output
 anon-rpc-demo/public/app.js
+
+# Local service data
+data/
