@@ -154,8 +154,13 @@ button.copy {
 
 .health,
 .events,
+.demo,
 .privacy {
   grid-column: 1 / -1;
+}
+
+tr.inferred td {
+  color: var(--muted);
 }
 
 .panel {
