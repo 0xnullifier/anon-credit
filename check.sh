@@ -100,8 +100,10 @@ else
   step "$PROVEKIT_RUST_TOOLCHAIN not installed; skip crates/prover"
 fi
 if [ "${PROVEKIT_GATE:-0}" = "1" ]; then
-  step "ProveKit browser gate (Chromium proves, Rust verifies)"
-  node packages/prover/dev/gate.ts
+  step "ProveKit browser gate, sample circuit (Chromium proves, Rust verifies)"
+  node packages/prover/dev/gate.ts --circuit sample
+  step "ProveKit browser gate, batch-open circuit (real 100-leaf witness)"
+  node packages/prover/dev/gate.ts --circuit batch-open
 fi
 
 printf '\nAll checks passed.\n'
