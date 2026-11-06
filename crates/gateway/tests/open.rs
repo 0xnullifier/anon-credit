@@ -288,7 +288,7 @@ async fn different_key_for_an_open_batch_is_a_conflict() {
     assert_eq!(response.error_code(), ErrorCode::SessionConflict);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_opens_of_one_batch_create_one_session() {
     let h = Arc::new(Harness::new().await);
     let gate = Arc::new(Semaphore::new(0));
