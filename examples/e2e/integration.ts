@@ -24,8 +24,9 @@ import { chromium, type Browser } from "playwright-core";
 import { createPublicClient, getContractAddress, http, toHex } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { z } from "zod";
-import { gatewayConfigResponseSchema, issuerConfigResponseSchema, sessionDetailSchema } from "@anon-credit/protocol";
+import { gatewayConfigResponseSchema, issuerConfigResponseSchema } from "@anon-credit/protocol";
 import { checkFunding, registerTopup, submitPurchase, waitForIssuance } from "@anon-credit/sdk/purchase";
+import { adminCheck } from "./src/admin-check.ts";
 import { findChromium } from "./src/chromium.ts";
 import { MANIFEST_PATH, REPO_ROOT, startPageServer, type PageServer } from "./src/page-server.ts";
 import { pageCaller } from "./src/page-driver.ts";
@@ -306,18 +307,7 @@ async function main(): Promise<number> {
           onProgress: (topup) => log(`topup: ${topup.status}${topup.pending_reason === null ? "" : ` (${topup.pending_reason})`}`),
         });
       },
-      dashboardCheck: async (batches, expected) => {
-        const details: Record<string, Json> = {};
-        for (const [index, batchId] of batches.entries()) {
-          const detail = await getJson(`${adminUrl}/admin/v1/sessions/${batchId}`, sessionDetailSchema, authorization);
-          const want = expected[index];
-          if (detail.summary.session.remaining !== want) {
-            throw new Error(`admin view of batch ${index + 1}: remaining ${detail.summary.session.remaining}, expected ${String(want)}`);
-          }
-          details[`batch${index + 1}`] = { remaining: detail.summary.session.remaining, receipts: detail.receipts.length };
-        }
-        return details;
-      },
+      dashboardCheck: (batches, expected) => adminCheck({ adminUrl, token: adminToken }, batches, expected),
     });
     const timeout = new Promise<never>((_resolve, reject) => {
       setTimeout(() => reject(new Error(`the run did not end in ${TIMEOUT_MS} ms`)), TIMEOUT_MS).unref();
