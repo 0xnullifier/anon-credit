@@ -1,0 +1,17 @@
+{
+  "name": "@anon-credit/crypto",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WASM interface to shared Rust hash and MMR operations.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@anon-credit/protocol": "workspace:*"
+  }
+}

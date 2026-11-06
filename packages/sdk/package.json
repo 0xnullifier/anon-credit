@@ -1,0 +1,20 @@
+{
+  "name": "@anon-credit/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Purchase coordination, batch storage, sessions, and signed RPC fetch.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@anon-credit/anon-transport": "workspace:*",
+    "@anon-credit/crypto": "workspace:*",
+    "@anon-credit/prover": "workspace:*",
+    "@anon-credit/protocol": "workspace:*"
+  }
+}

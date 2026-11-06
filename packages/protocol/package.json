@@ -1,0 +1,21 @@
+{
+  "name": "@anon-credit/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runtime schemas, TypeScript types, byte encoding, and error codes.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@noble/curves": "2.4.0"
+  }
+}

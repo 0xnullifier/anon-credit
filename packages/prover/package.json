@@ -1,0 +1,17 @@
+{
+  "name": "@anon-credit/prover",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ProveKit browser adapter, worker, artifact loading, and timing.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@anon-credit/protocol": "workspace:*"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@anon-credit/anon-transport",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser harness lifecycle, Nox configuration, and batch isolation.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@anon-rpc/browser-harness": "0.4.0"
+  }
+}
