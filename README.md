@@ -177,6 +177,152 @@ the environment. The services print `set` or `not set` for secrets, never the va
   digests and signatures come from a separate Rust program. They do not come from the encoders
   under test. The signing key is the public RFC 8032 test key.
 
+## Circuit hash, MMR, and batch-open statement (phase 1B)
+
+This section is the reference for the hash rules. The circuit (`circuits/batch-open`), the
+registry (`crates/registry`), the Rust helpers (`crates/crypto`), and the TypeScript package
+(`packages/crypto`) use the same rules. Shared vectors prove that they agree.
+
+### Hash definition
+
+`H(x_1, ..., x_n)` is Poseidon2 over the BN254 scalar field
+(`p = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001`). It is the same
+function as Noir `Poseidon2::hash(inputs, n)` (the standard library sponge, now in
+`noir-lang/poseidon`):
+
+- Permutation: `std::hash::poseidon2_permutation`, width 4, S-box `x^5`, 8 full rounds and
+  56 partial rounds. The constants are in `fixtures/protocol/poseidon2-params.json`, copied from
+  the Noir ACVM solver at `v1.0.0-beta.12`.
+- Sponge: state `[0, 0, 0, n * 2^64]`, rate 3, capacity 1. Absorb in order. When the cache has
+  3 values and one more value comes, add the cache to state words 0..3 and permute. Squeeze:
+  add the zero-padded cache, permute, return word 0. Thus `n` inputs use `max(1, ceil(n / 3))`
+  permutations.
+
+### Encodings
+
+- A field value on the wire is 32 bytes, big-endian, canonical. Decoders reject a value
+  `>= p`. In JSON it is `0x` and 64 lowercase hex digits.
+- A 32-byte value (`deployment_id`, `gateway_id`, `k`, `session_pub`) enters the circuit as two
+  128-bit limbs `[hi, lo]`: `hi` = bytes 0..16, `lo` = bytes 16..32, both big-endian. The limbs
+  are never reduced. The circuit constrains each limb to 128 bits.
+- Epochs are `u64`. In JSON they are decimal strings. `leaf_count` and `leaf_index` are `u32`.
+
+### Domain tags and constructions
+
+The single source is `fixtures/protocol/domains.json`. A tag value is the big-endian integer of
+its ASCII text (at most 27 bytes).
+
+| Tag | Text | Field value |
+|---|---|---|
+| `DOM_COMMITMENT` | `anon-credit/v1/commitment` | `0x616e6f6e2d6372656469742f76312f636f6d6d69746d656e74` |
+| `DOM_LEAF` | `anon-credit/v1/leaf` | `0x616e6f6e2d6372656469742f76312f6c656166` |
+| `DOM_BATCH_ID` | `anon-credit/v1/batch-id` | `0x616e6f6e2d6372656469742f76312f62617463682d6964` |
+| `DOM_BINDING` | `anon-credit/v1/binding` | `0x616e6f6e2d6372656469742f76312f62696e64696e67` |
+| `DOM_MMR_LEAF` | `anon-credit/v1/mmr-leaf` | `0x616e6f6e2d6372656469742f76312f6d6d722d6c656166` |
+| `DOM_MMR_NODE` | `anon-credit/v1/mmr-node` | `0x616e6f6e2d6372656469742f76312f6d6d722d6e6f6465` |
+| `DOM_MMR_ROOT` | `anon-credit/v1/mmr-root` | `0x616e6f6e2d6372656469742f76312f6d6d722d726f6f74` |
+| `CIRCUIT_ID` | `anon-credit/v1/batch-open` | `0x616e6f6e2d6372656469742f76312f62617463682d6f70656e` |
+
+```text
+c        = H(DOM_COMMITMENT, deployment_id_hi, deployment_id_lo, k_hi, k_lo)
+leaf     = H(DOM_LEAF, c, K, expiry)                                  K = 100
+batch_id = H(DOM_BATCH_ID, deployment_id_hi, deployment_id_lo, k_hi, k_lo)
+binding  = H(DOM_BINDING, gateway_id_hi, gateway_id_lo, session_pub_hi, session_pub_lo)
+```
+
+The deployment ID is in `c` and `batch_id`, so credit does not move between deployments.
+
+### MMR rules
+
+- At most `2^32 - 1` leaves. The peaks are the 1 bits of `leaf_count`, in descending height
+  order (left to right). A node of height `h` covers `2^h` leaves.
+- `leaf_node = H(DOM_MMR_LEAF, leaf)`.
+- `node = H(DOM_MMR_NODE * 2^32 + height, left, right)`. `height` is the parent height (1..31).
+  The node domain is less than `2^248`, and it is never equal to a plain tag.
+- Bagging rule: `root = H(DOM_MMR_ROOT, leaf_count, slot[31], slot[30], ..., slot[0])`.
+  `slot[h]` is the peak of height `h` if bit `h` of `leaf_count` is 1, else zero. The empty MMR
+  has root `H(DOM_MMR_ROOT, 0, 0, ..., 0)`.
+- Path rule: leaf `i` of `n` is under the peak of height `h` = the highest bit in which `i` and
+  `n` are different. At level `j < h`, bit `j` of `i` is 1 if the node is the right child.
+- Proof (JSON, the same in Rust and TypeScript): `{leaf_index, leaf_count, peak_position,
+  siblings[h], peaks[]}`. The verifier calculates the peak height and position and rejects a
+  proof whose fields do not agree.
+- `crates/registry`: `Mmr<S: MmrStore>` with `append`, `peaks`/`peaks_at`, `root`/`root_at`,
+  `membership_proof`/`membership_proof_at` (snapshots at an earlier `leaf_count`), and
+  `verify_proof`. `MemoryStore` is the in-memory store. Phase 2 adds a SQLite `MmrStore`; one
+  `AppendUpdate` must be one transaction.
+
+### Circuit layout
+
+`circuits/batch-open/src/main.nr`. Public inputs, in order (also in
+`anon_credit_crypto::public_inputs` and `packages/crypto/src/public-inputs.ts`):
+
+| Index | Input |
+|---|---|
+| 0 | `circuit_id` (must equal `CIRCUIT_ID`) |
+| 1, 2 | `deployment_id` `[hi, lo]` |
+| 3, 4 | `gateway_id` `[hi, lo]` |
+| 5 | `root` |
+| 6 | `leaf_count` |
+| 7 | `proof_epoch` |
+| 8 | `batch_id` |
+| 9 | `binding` |
+
+Private inputs: `k[2]`, `expiry`, `leaf_index`, `siblings[32]`, `peaks[32]`, `session_pub[2]`.
+`siblings[j]` is zero for `j >= h`. `peaks[t]` is the peak of height `t`, or zero.
+
+Constraints: the limbs are 128-bit; `c`, `leaf`, `batch_id`, `binding` as above;
+`proof_epoch <= expiry`; `leaf_index` and `leaf_count` decompose into 32 bits; the peak height
+and each left/right decision come from those bits (this also proves `leaf_index < leaf_count`);
+sibling padding and empty peak slots are zero; the path node equals `peaks[h]`; the root of
+`leaf_count` and `peaks` equals the public `root`.
+
+Size (`nargo info`, nargo 1.0.0-beta.12): 819 ACIR opcodes, with 52 Poseidon2 permutation calls
+and 75 range checks. ProveKit R1CS size is measured by the prover work.
+
+Witness helpers: `BatchOpenWitness::from_proof` and `BatchOpenWitness::from_mmr` in
+`crates/registry/src/witness.rs` (serde JSON and `to_prover_toml`), and
+`buildBatchOpenWitness` in `packages/crypto`. The gateway rebuilds the public inputs with
+`BatchOpenPublicInputs::for_open` (Rust) or `batchOpenPublicInputs` (TypeScript).
+
+### Commands
+
+```sh
+export PATH="$HOME/.nargo/bin:$PATH"
+(cd circuits/batch-open && nargo test)      # 63 tests: hash vectors, 7 valid witnesses, negative cases
+(cd circuits/batch-open && nargo execute)   # solves Prover.toml (tree of 7 leaves)
+(cd circuits/batch-open && nargo info)
+cargo test -p anon-credit-crypto -p anon-credit-registry
+pnpm --filter @anon-credit/crypto test
+```
+
+### Fixture regeneration
+
+Run in this order after a change to the tags, the hash, or the MMR rules. The Rust and
+TypeScript tests fail if a generated file is out of date.
+
+```sh
+node packages/crypto/scripts/generate-constants.ts       # domains.json, poseidon2-params.json ->
+                                                          #   crates/crypto/src/constants.rs,
+                                                          #   packages/crypto/src/constants.generated.ts,
+                                                          #   circuits/batch-open/src/constants.nr,
+                                                          #   fixtures/protocol/noir-vectors/src/constants.nr
+node packages/crypto/scripts/collect-noir-vectors.ts     # runs nargo in fixtures/protocol/noir-vectors ->
+                                                          #   fixtures/protocol/poseidon2.json,
+                                                          #   circuits/batch-open/src/hash_vectors.nr
+cargo run -p anon-credit-registry --example generate_fixtures
+                                                          # -> fixtures/protocol/mmr.json, batch-open.json,
+                                                          #   circuits/batch-open/src/witness_vectors.nr,
+                                                          #   circuits/batch-open/Prover.toml
+```
+
+`fixtures/protocol/noir-vectors` depends on `noir-lang/poseidon` `v0.2.0` (git). The batch-open
+circuit has no dependencies. Do not run `nargo fmt` on the generated `.nr` files.
+
+New dependency versions (local to the crate manifests): ark-bn254 0.5.0 and ark-ff 0.5.0 in
+`anon-credit-crypto`, proptest 1.12.0 (dev) in `anon-credit-registry`, zod 4.6.7 in
+`@anon-credit/crypto`.
+
 ## Pinned versions
 
 Rust (`Cargo.lock` pins the full set): tokio 1.54.1, axum 0.8.9, serde 1.0.229,
