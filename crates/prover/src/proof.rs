@@ -6,8 +6,8 @@ use crate::{error::DecodeError, public_input::PublicInput};
 
 /// The default size limit for one encoded proof (4 MiB).
 ///
-/// The sample circuit has a JSON proof of about 0.6 MB. Set the limit for each circuit
-/// from measured proof sizes.
+/// Measured JSON proofs: about 0.45 MB (sample circuit) and 0.48 MB (batch-open circuit).
+/// Binary `.np` proofs are smaller. Set the limit for each circuit from measured proof sizes.
 pub const DEFAULT_MAX_PROOF_BYTES: usize = 4 * 1024 * 1024;
 
 /// The encoding of a proof.
