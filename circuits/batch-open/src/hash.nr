@@ -1,7 +1,8 @@
 // Poseidon2 circuit hash over the BN254 scalar field.
 //
 // `hash` is the same function as `Poseidon2::hash(inputs, N)` of the Noir standard library
-// sponge (now in the package noir-lang/poseidon). hash_vectors.nr checks it against the
+// sponge (in Noir 1.0.0-beta.26 the sponge is private to the standard library; the public copy
+// is the package noir-lang/poseidon v0.4.0). hash_vectors.nr checks it against the
 // reference vectors in fixtures/protocol/poseidon2.json.
 //
 // Sponge: state [0, 0, 0, N * 2^64], rate 3, capacity 1. Absorb the inputs into a cache of 3.
@@ -12,9 +13,11 @@
 global TWO_POW_64: Field = 18446744073709551616;
 
 // The width-4 Poseidon2 permutation. This is the only call to the black box.
+// In Noir 1.0.0-beta.26 the black box takes only the state. The compiler checks that the
+// length is the state size of the backend (4 for BN254).
 // If a later Noir version changes the black-box signature, change only this function.
 pub fn permute(state: [Field; 4]) -> [Field; 4] {
-    std::hash::poseidon2_permutation(state, 4)
+    std::hash::poseidon2_permutation(state)
 }
 
 // Fixed-length Poseidon2 sponge hash of N inputs.

@@ -59,8 +59,9 @@ pub fn membership_root(
     assert(MAX_HEIGHT == INDEX_BITS);
     assert(MAX_PEAKS == INDEX_BITS);
     // The bit decompositions also constrain both values to be less than 2^32.
-    let index_bits: [u1; INDEX_BITS] = leaf_index.to_le_bits();
-    let count_bits: [u1; INDEX_BITS] = leaf_count.to_le_bits();
+    // Noir 1.0.0-beta.26 returns the bits as bool (it removed u1).
+    let index_bits: [bool; INDEX_BITS] = leaf_index.to_le_bits();
+    let count_bits: [bool; INDEX_BITS] = leaf_count.to_le_bits();
 
     // in_path[j] = 1 if level j is below the peak (j < h).
     // is_peak[t] = 1 if t is the peak height h.
