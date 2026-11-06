@@ -22,7 +22,9 @@ use crate::error::ApiError;
 use crate::events::EventDraft;
 use crate::peer::Observed;
 use crate::store::{InsertOutcome, SessionRow, StoredState};
-use anon_credit_crypto::{BatchOpenPublicInputs, FieldElement, keccak256, verify_ed25519};
+use anon_credit_crypto::{
+    BatchOpenPublicInputs, FieldElement, PUBLIC_INPUT_COUNT, keccak256, verify_ed25519,
+};
 use anon_credit_protocol::admin::EventKind;
 use anon_credit_protocol::api::{OpenRequest, OpenResponse};
 use anon_credit_protocol::{Bytes32, ErrorCode, PROTOCOL_VERSION};
@@ -63,6 +65,34 @@ pub async fn open(
             error.into_response()
         }
     }
+}
+
+/// Build the batch-open public inputs in circuit order:
+/// `[circuit_id, deployment_id[hi, lo], gateway_id[hi, lo], root, leaf_count, proof_epoch,
+/// batch_id, binding]`, with `binding = H(DOM_BINDING, gateway_id limbs, session_pub limbs)`.
+///
+/// The gateway takes the IDs from its configuration, the root and the leaf count from the
+/// accepted root record, and only the proof epoch, the batch ID, and the session key from the
+/// request. `fixtures/protocol/batch-open-public-inputs.json` pins this order.
+pub fn build_public_inputs(
+    deployment_id: &Bytes32,
+    gateway_id: &Bytes32,
+    root: FieldElement,
+    leaf_count: u32,
+    proof_epoch: u64,
+    batch_id: FieldElement,
+    session_pub: &Bytes32,
+) -> [FieldElement; PUBLIC_INPUT_COUNT] {
+    BatchOpenPublicInputs::for_open(
+        deployment_id.0,
+        gateway_id.0,
+        root,
+        leaf_count,
+        proof_epoch,
+        batch_id,
+        &session_pub.0,
+    )
+    .to_fields()
 }
 
 fn invalid(message: &str) -> ApiError {
@@ -185,14 +215,14 @@ async fn open_inner(
         session_deadline(current).ok_or_else(|| invalid("epoch is out of range"))?;
 
     // The gateway builds the public inputs. The request has no public-input field.
-    let inputs = BatchOpenPublicInputs::for_open(
-        config.deployment_id.0,
-        config.gateway_id().0,
+    let inputs = build_public_inputs(
+        &config.deployment_id,
+        &config.gateway_id(),
         root_field,
         record.leaf_count,
         proof_epoch,
         batch_field,
-        &request.session_pub.0,
+        &request.session_pub,
     );
     let outcome = {
         let _slot = gateway
@@ -202,7 +232,7 @@ async fn open_inner(
             .map_err(|_| ApiError::new(ErrorCode::Busy, "proof verification queue is full"))?;
         gateway
             .verifier
-            .verify(&request.proof.0, &inputs.to_fields())
+            .verify(&request.proof.0, &inputs)
             .await
             .map_err(|_| ApiError::new(ErrorCode::Busy, "proof verifier is not available"))?
     };
