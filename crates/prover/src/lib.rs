@@ -10,6 +10,7 @@
 //! - [`Proof`]: a decoded proof. It accepts the JSON encoding from the browser WASM prover
 //!   and the binary `.np` encoding from the native CLI.
 //! - [`PublicInput`]: one canonical BN254 field element.
+//! - [`serve`]: the loopback HTTP verifier sidecar that the gateway calls.
 //!
 //! The gateway must make the expected public inputs from its own values. Do not read the
 //! expected public inputs from the request.
@@ -20,6 +21,7 @@ mod digest;
 mod error;
 mod proof;
 mod public_input;
+pub mod serve;
 mod verifier;
 
 pub use digest::Sha256Digest;

@@ -5,6 +5,7 @@
 //! - `verify`: verify one proof file and print the duration.
 //! - `bench`: verify one proof file many times and print the durations.
 //! - `inspect`: print the encoding, size, and public inputs of a proof file.
+//! - `serve`: run the loopback HTTP verifier sidecar (see `anon_credit_prover::serve`).
 //!
 //! Exit codes: 0 for success, 1 for a rejected proof or a load error, 2 for a usage error.
 
@@ -16,6 +17,7 @@ use std::{
 
 use anon_credit_prover::{
     DEFAULT_MAX_PROOF_BYTES, PinnedVerifier, Proof, ProofEncoding, PublicInput, Sha256Digest,
+    serve::{self, BATCH_OPEN_CIRCUIT_ID, DEFAULT_PORT, ServeConfig},
 };
 
 const USAGE: &str = "\
@@ -23,8 +25,12 @@ usage:
   anon-credit-prover verify  --pkv <file> --pkv-sha256 <hex> --proof <file> --public-input <0xhex>...
   anon-credit-prover bench   --pkv <file> --pkv-sha256 <hex> --proof <file> --public-input <0xhex>... [--iterations <n>]
   anon-credit-prover inspect --proof <file>
+  anon-credit-prover serve   --pkv <file> --pkv-sha256 <hex> [--port <n>] [--circuit-id <0xhex>]
+                             [--max-concurrency <n>] [--max-queue <n>] [--max-body-bytes <n>]
 options:
-  --max-proof-bytes <n>   proof size limit (default 4194304)";
+  --max-proof-bytes <n>   proof size limit (default 4194304)
+serve defaults: port 8083 on 127.0.0.1, the batch-open circuit ID, concurrency 2, queue 32,
+  body limit 16777216";
 
 #[derive(Debug, Default)]
 struct Args {
@@ -34,12 +40,18 @@ struct Args {
     public_inputs: Vec<String>,
     iterations: Option<String>,
     max_proof_bytes: Option<String>,
+    port: Option<String>,
+    circuit_id: Option<String>,
+    max_concurrency: Option<String>,
+    max_queue: Option<String>,
+    max_body_bytes: Option<String>,
 }
 
 enum Command {
     Verify,
     Bench,
     Inspect,
+    Serve,
 }
 
 fn main() -> ExitCode {
@@ -68,6 +80,7 @@ fn run(raw: &[String]) -> Result<(), Failure> {
         "verify" => Command::Verify,
         "bench" => Command::Bench,
         "inspect" => Command::Inspect,
+        "serve" => Command::Serve,
         other => return Err(usage(&format!("unknown command {other}"))),
     };
     let args = parse_args(rest)?;
@@ -75,6 +88,9 @@ fn run(raw: &[String]) -> Result<(), Failure> {
         Some(text) => parse_count(text, "--max-proof-bytes")?,
         None => DEFAULT_MAX_PROOF_BYTES,
     };
+    if let Command::Serve = command {
+        return run_serve(&args, max_proof_bytes);
+    }
     let proof_path = args
         .proof
         .clone()
@@ -115,6 +131,7 @@ fn run(raw: &[String]) -> Result<(), Failure> {
             );
             Ok(())
         }
+        Command::Serve => Err(usage("serve does not take --proof")),
         Command::Bench => {
             let verifier = load_verifier(&args)?;
             let expected = parse_public_inputs(&args)?;
@@ -168,10 +185,51 @@ fn parse_args(rest: &[String]) -> Result<Args, Failure> {
             "--public-input" => args.public_inputs.push(value.clone()),
             "--iterations" => args.iterations = Some(value.clone()),
             "--max-proof-bytes" => args.max_proof_bytes = Some(value.clone()),
+            "--port" => args.port = Some(value.clone()),
+            "--circuit-id" => args.circuit_id = Some(value.clone()),
+            "--max-concurrency" => args.max_concurrency = Some(value.clone()),
+            "--max-queue" => args.max_queue = Some(value.clone()),
+            "--max-body-bytes" => args.max_body_bytes = Some(value.clone()),
             other => return Err(usage(&format!("unknown option {other}"))),
         }
     }
     Ok(args)
+}
+
+fn run_serve(args: &Args, max_proof_bytes: usize) -> Result<(), Failure> {
+    let verifier = load_verifier(args)?;
+    let circuit_id_text = args.circuit_id.as_deref().unwrap_or(BATCH_OPEN_CIRCUIT_ID);
+    let circuit_id =
+        PublicInput::from_hex(circuit_id_text).map_err(|e| usage(&format!("--circuit-id: {e}")))?;
+    let mut config = ServeConfig::new(circuit_id);
+    config.max_proof_bytes = max_proof_bytes;
+    if let Some(text) = &args.max_concurrency {
+        config.max_concurrency = parse_count(text, "--max-concurrency")?;
+    }
+    if let Some(text) = &args.max_queue {
+        config.max_queue = parse_queue(text)?;
+    }
+    if let Some(text) = &args.max_body_bytes {
+        config.max_body_bytes = parse_count(text, "--max-body-bytes")?;
+    }
+    let port = match &args.port {
+        Some(text) => text
+            .parse::<u16>()
+            .map_err(|_| usage("--port must be a port number"))?,
+        None => DEFAULT_PORT,
+    };
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| failed(format!("cannot start the runtime: {e}")))?;
+    runtime
+        .block_on(serve::serve(verifier, config, port))
+        .map_err(|e| failed(format!("serve failed: {e}")))
+}
+
+fn parse_queue(text: &str) -> Result<usize, Failure> {
+    text.parse::<usize>()
+        .map_err(|_| usage("--max-queue must be a non-negative integer"))
 }
 
 fn load_verifier(args: &Args) -> Result<PinnedVerifier, Failure> {
