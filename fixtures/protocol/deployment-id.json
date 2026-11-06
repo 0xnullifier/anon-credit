@@ -1,6 +1,6 @@
 {
   "description": "Deployment ID vectors. message = fixed binary encoding from crates/protocol/src/deployment.rs. deployment_id = keccak256(message).",
-  "encoding": "All hex is 0x-prefixed lowercase. payment_chain_id is a decimal string (u64).",
+  "encoding": "All hex is 0x-prefixed lowercase. payment_chain_id is a JSON number at most 2^53 - 1.",
   "cases": [
     {
       "name": "sepolia_testnet_profile",
@@ -11,7 +11,7 @@
         "epoch_seconds": 30,
         "gateway_id": "0x606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
         "issuer_address": "0x505152535455565758595a5b5c5d5e5f60616263",
-        "payment_chain_id": "11155111",
+        "payment_chain_id": 11155111,
         "protocol_version": 1,
         "prover_manifest_hash": "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
         "root_registry_address": "0x303132333435363738393a3b3c3d3e3f40414243",

@@ -111,7 +111,7 @@ struct DeploymentCase {
 #[derive(Deserialize)]
 struct DeploymentInput {
     protocol_version: u16,
-    payment_chain_id: String,
+    payment_chain_id: u64,
     sale_address: Address,
     root_registry_address: Address,
     issuer_address: Address,
@@ -138,7 +138,7 @@ fn deployment_id_matches_shared_vectors() {
         let input = case.input;
         let config = DeploymentConfig {
             protocol_version: input.protocol_version,
-            payment_chain_id: input.payment_chain_id.parse().unwrap(),
+            payment_chain_id: input.payment_chain_id,
             sale_address: input.sale_address,
             root_registry_address: input.root_registry_address,
             issuer_address: input.issuer_address,

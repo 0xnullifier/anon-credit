@@ -47,6 +47,11 @@ pub const EPOCH_SECONDS_TESTNET: u32 = 30;
 /// Epoch length of the production profile.
 pub const EPOCH_SECONDS_PRODUCTION: u32 = 900;
 
+/// Largest chain ID that JavaScript can represent exactly (`2^53 - 1`).
+///
+/// The JSON form carries the chain ID as a number, so the value must stay in this range.
+pub const MAX_SAFE_CHAIN_ID: u64 = (1 << 53) - 1;
+
 /// Failure of a deployment configuration check.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DeploymentError {
@@ -61,6 +66,9 @@ pub enum DeploymentError {
         /// Version of this build.
         expected: u16,
     },
+    /// The chain ID is larger than [`MAX_SAFE_CHAIN_ID`].
+    #[error("payment_chain_id is larger than 2^53 - 1")]
+    ChainIdTooLarge,
     /// A numeric field is zero.
     #[error("field {0} must be greater than zero")]
     ZeroValue(&'static str),
@@ -112,6 +120,9 @@ impl DeploymentConfig {
                 found: self.protocol_version,
                 expected: PROTOCOL_VERSION,
             });
+        }
+        if self.payment_chain_id > MAX_SAFE_CHAIN_ID {
+            return Err(DeploymentError::ChainIdTooLarge);
         }
         let numeric = [
             ("payment_chain_id", self.payment_chain_id),
@@ -240,6 +251,9 @@ mod tests {
             config.validate(),
             Err(DeploymentError::UnsupportedVersion { .. })
         ));
+        let mut config = sample();
+        config.payment_chain_id = MAX_SAFE_CHAIN_ID + 1;
+        assert_eq!(config.validate(), Err(DeploymentError::ChainIdTooLarge));
         let mut config = sample();
         config.epoch_seconds = 0;
         assert_eq!(
