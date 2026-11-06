@@ -12,9 +12,13 @@
 //! 6. The proof epoch is the current or the previous epoch.
 //! 7. The root is accepted (last 96 source epochs) and the leaf count agrees.
 //! 8. The open signature verifies.
-//! 9. The proof verifies against public inputs that the gateway builds itself. At most two
-//!    verifications run at the same time; a full queue gives `busy`.
-//! 10. Insert the session. A unique batch ID makes a concurrent second insert fail.
+//! 9. The proof bytes come from the request (`proof`) or from a complete chunked upload
+//!    (`proof_upload`, see [`crate::upload`]). The gateway takes the upload out of the store,
+//!    checks its length, and decompresses `json+gzip` with the upload size limit. Each open
+//!    request with `proof_upload` deletes the upload, also when the request fails.
+//! 10. The proof verifies against public inputs that the gateway builds itself. At most two
+//!     verifications run at the same time; a full queue gives `busy`.
+//! 11. Insert the session. A unique batch ID makes a concurrent second insert fail.
 
 use crate::app::{SharedGateway, read_body};
 use crate::epoch::{proof_epoch_is_fresh, session_deadline};
@@ -22,11 +26,12 @@ use crate::error::ApiError;
 use crate::events::EventDraft;
 use crate::peer::Observed;
 use crate::store::{InsertOutcome, SessionRow, StoredState};
+use crate::upload::{UploadKey, decode_proof};
 use anon_credit_crypto::{
     BatchOpenPublicInputs, FieldElement, PUBLIC_INPUT_COUNT, keccak256, verify_ed25519,
 };
 use anon_credit_protocol::admin::EventKind;
-use anon_credit_protocol::api::{OpenRequest, OpenResponse};
+use anon_credit_protocol::api::{OpenRequest, OpenResponse, ProofSource};
 use anon_credit_protocol::{Bytes32, ErrorCode, PROTOCOL_VERSION};
 use axum::Json;
 use axum::body::Bytes;
@@ -34,6 +39,7 @@ use axum::extract::rejection::BytesRejection;
 use axum::extract::{ConnectInfo, State};
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
+use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::time::Instant;
 
@@ -52,7 +58,21 @@ pub async fn open(
     }
     gateway.events.publish(received);
     let mut batch_id = None;
-    match open_inner(&gateway, &observed, body, started, &mut batch_id).await {
+    let mut upload_key = None;
+    let result = open_inner(
+        &gateway,
+        &observed,
+        body,
+        started,
+        &mut batch_id,
+        &mut upload_key,
+    )
+    .await;
+    // An open request deletes its upload in all cases. Usually the pipeline took it already.
+    if let Some(key) = upload_key {
+        gateway.uploads.remove(&key);
+    }
+    match result {
         Ok(response) => Json(response).into_response(),
         Err(error) => {
             let mut draft = EventDraft::new(EventKind::OpenRejected, &observed)
@@ -109,17 +129,37 @@ fn check_signature(request: &OpenRequest) -> Result<(), ApiError> {
     })
 }
 
-/// The open request without the proof bytes, for the session row.
-fn stored_request_json(request: &OpenRequest) -> Result<String, ApiError> {
+/// The open request without the proof bytes, for the session row. `proof_keccak256` is the
+/// hash of the proof bytes that the verifier received (after decompression).
+fn stored_request_json(request: &OpenRequest, proof: &[u8]) -> Result<String, ApiError> {
     let mut value = serde_json::to_value(request).map_err(|_| ApiError::storage())?;
     if let Some(object) = value.as_object_mut() {
         object.remove("proof");
         object.insert(
             "proof_keccak256".to_owned(),
-            serde_json::Value::String(Bytes32(keccak256(&request.proof.0)).to_hex()),
+            serde_json::Value::String(Bytes32(keccak256(proof)).to_hex()),
         );
     }
     serde_json::to_string(&value).map_err(|_| ApiError::storage())
+}
+
+/// The proof bytes for the verifier: the inline bytes, or the decoded bytes of the upload.
+fn proof_bytes<'a>(
+    gateway: &SharedGateway,
+    request: &'a OpenRequest,
+) -> Result<Cow<'a, [u8]>, ApiError> {
+    match request.proof_source().map_err(invalid)? {
+        ProofSource::Inline(bytes) => Ok(Cow::Borrowed(bytes)),
+        ProofSource::Upload(reference) => {
+            let uploads = &gateway.uploads;
+            let bytes = uploads
+                .take(request.batch_id, reference, gateway.clock.now_unix())
+                .map_err(|error| error.to_api())?;
+            decode_proof(reference.proof_encoding, bytes, uploads.limits().max_bytes)
+                .map(Cow::Owned)
+                .map_err(|error| error.to_api())
+        }
+    }
 }
 
 /// Answer an open request for a batch ID that already has a session.
@@ -156,11 +196,18 @@ async fn open_inner(
     body: Result<Bytes, BytesRejection>,
     started: Instant,
     batch_id: &mut Option<Bytes32>,
+    upload_key: &mut Option<UploadKey>,
 ) -> Result<OpenResponse, ApiError> {
     let body = read_body(body)?;
     let request: OpenRequest = serde_json::from_slice(&body)
         .map_err(|_| invalid("open request does not match the schema"))?;
     *batch_id = Some(request.batch_id);
+    if let Ok(ProofSource::Upload(reference)) = request.proof_source() {
+        *upload_key = Some(UploadKey {
+            batch_id: request.batch_id,
+            proof_sha256: reference.proof_sha256,
+        });
+    }
     let config = &gateway.config;
 
     if request.protocol_version != PROTOCOL_VERSION {
@@ -214,6 +261,8 @@ async fn open_inner(
     let deadline_epoch =
         session_deadline(current).ok_or_else(|| invalid("epoch is out of range"))?;
 
+    let proof = proof_bytes(gateway, &request)?;
+
     // The gateway builds the public inputs. The request has no public-input field.
     let inputs = build_public_inputs(
         &config.deployment_id,
@@ -232,7 +281,7 @@ async fn open_inner(
             .map_err(|_| ApiError::new(ErrorCode::Busy, "proof verification queue is full"))?;
         gateway
             .verifier
-            .verify(&request.proof.0, &inputs)
+            .verify(&proof, &inputs)
             .await
             .map_err(|_| ApiError::new(ErrorCode::Busy, "proof verifier is not available"))?
     };
@@ -246,7 +295,7 @@ async fn open_inner(
         EventDraft::new(EventKind::OpenVerified, observed)
             .batch(request.batch_id)
             .latency_ms(outcome.duration_ms)
-            .response_bytes(request.proof.0.len()),
+            .response_bytes(proof.len()),
     );
 
     let row = SessionRow {
@@ -258,9 +307,9 @@ async fn open_inner(
         open_epoch: current,
         deadline_epoch,
         open_request_digest: request.message().digest(),
-        open_request_json: stored_request_json(&request)?,
+        open_request_json: stored_request_json(&request, &proof)?,
         price_table_hash: request.price_table_hash,
-        proof_size: u32::try_from(request.proof.0.len()).unwrap_or(u32::MAX),
+        proof_size: u32::try_from(proof.len()).unwrap_or(u32::MAX),
         verify_ms: u32::try_from(outcome.duration_ms).unwrap_or(u32::MAX),
         state: StoredState::for_remaining(config.deployment.batch_size),
         opened_at: gateway.clock.now_unix(),
