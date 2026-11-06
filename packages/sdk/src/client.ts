@@ -17,8 +17,8 @@ import {
   deploymentId,
   encodeHex,
   issuanceSchema,
+  type InlineOpenRequest,
   type Issuance,
-  type OpenRequest,
   type OpenResponse,
   type PriceTable,
   type StatusResponse,
@@ -37,6 +37,7 @@ import {
   type PreparedOpen,
   type ProverLike,
   type SelectedRoot,
+  type SubmitOpenOptions,
 } from "./open.ts";
 import { systemClock, webCryptoRandom, type Clock, type RandomSource } from "./random.ts";
 import { expectedLeaf, registryClient, type RegistryClient } from "./registry.ts";
@@ -52,6 +53,7 @@ import {
   type DeploymentRecord,
 } from "./state.ts";
 import { openEncryptedStore, type EncryptedStore, type StorageAdapter } from "./storage.ts";
+import { DEFAULT_UPLOAD_POLICY, type OpenUploadMode, type UploadPolicy, type UploadStats } from "./upload.ts";
 
 export interface ClientConfig {
   // Gateway and issuer base URLs (HTTPS for the testnet run).
@@ -82,6 +84,17 @@ export interface ClientConfig {
   // Wait limit for an eligible root. Default: 2 hours.
   readonly eligibleTimeoutMs?: number;
   readonly onOpenProgress?: (progress: OpenProgress) => void;
+  // When the proof goes in chunks (PUT /v1/open/chunks). Default: "auto" (always through Nox,
+  // and for a request above transport.maxBodyBytes).
+  readonly openUpload?: OpenUploadMode;
+  // Chunk concurrency and retries. Default: 4 at the same time, 3 attempts, 500 ms apart.
+  readonly uploadPolicy?: Partial<UploadPolicy>;
+}
+
+export interface OpenOutcome {
+  readonly response: OpenResponse;
+  // Measurements of the chunked upload, or null for an inline proof.
+  readonly upload: UploadStats | null;
 }
 
 export interface BatchSummary {
@@ -110,7 +123,7 @@ export interface Client {
   readonly batches: () => Promise<BatchSummary[]>;
   readonly waitForEligibleRoot: (batchId: string) => Promise<SelectedRoot>;
   readonly prepareOpen: (batchId: string, root?: SelectedRoot) => Promise<PreparedOpen>;
-  readonly submitOpen: (batchId: string, request: OpenRequest) => Promise<OpenResponse>;
+  readonly submitOpen: (batchId: string, request: InlineOpenRequest, options?: SubmitOpenOptions) => Promise<OpenOutcome>;
   // Wait, prove, and open. Make a new proof one time if the proof epoch is stale.
   readonly open: (batchId: string) => Promise<OpenResponse>;
   readonly session: (batchId: string) => Promise<Session>;
@@ -248,6 +261,9 @@ export async function createClient(config: ClientConfig): Promise<Client> {
     priceTable: checked.priceTable,
     priceTableHash: checked.priceTableHash,
     pollMs: config.pollMs ?? 5000,
+    transport: config.transport,
+    openUpload: config.openUpload ?? "auto",
+    uploadPolicy: { policy: { ...DEFAULT_UPLOAD_POLICY, ...config.uploadPolicy } },
     ...(config.onOpenProgress === undefined ? {} : { onProgress: config.onOpenProgress }),
   };
   const sessions = new Map<string, Session>();
@@ -288,19 +304,19 @@ export async function createClient(config: ClientConfig): Promise<Client> {
     return prepareOpen(openContext, await load(batchId), keyOf(record), selected);
   };
 
-  const submit = async (batchId: string, request: OpenRequest): Promise<OpenResponse> => {
-    const result = await submitOpen(openContext, await load(batchId), request);
+  const submit = async (batchId: string, request: InlineOpenRequest, options: SubmitOpenOptions = {}): Promise<OpenOutcome> => {
+    const result = await submitOpen(openContext, await load(batchId), request, options);
     sessions.delete(batchId);
-    return result.response;
+    return { response: result.response, upload: result.upload };
   };
 
   const open = async (batchId: string): Promise<OpenResponse> => {
     const prepared = await prepare(batchId);
     try {
-      return await submit(batchId, prepared.request);
+      return (await submit(batchId, prepared.request)).response;
     } catch (error) {
       if (error instanceof ServiceError && error.serviceCode === "proof_epoch_stale") {
-        return submit(batchId, (await prepare(batchId, prepared.root)).request);
+        return (await submit(batchId, (await prepare(batchId, prepared.root)).request)).response;
       }
       throw error;
     }

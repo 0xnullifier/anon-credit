@@ -14,7 +14,7 @@ import {
   decimalU64TextSchema,
   fieldHexTextSchema,
   hex32TextSchema,
-  openRequestSchema,
+  inlineOpenRequestSchema,
   priceTableSchema,
   sessionStatusSchema,
   signatureTextSchema,
@@ -90,7 +90,7 @@ export const batchRecordSchema = z.strictObject({
   // Random first-use delay in epochs (0 to 3), chosen once.
   delay_epochs: z.number().int().min(0).max(3),
   leaf: leafRecordSchema.nullable(),
-  open_request: openRequestSchema.nullable(),
+  open_request: inlineOpenRequestSchema.nullable(),
   session: sessionRecordSchema.nullable(),
   pending: pendingSpendSchema.nullable(),
   // true after the application rotated away from this batch.

@@ -1,5 +1,7 @@
 // Open a batch: wait for an eligible root and the first-use delay, fetch and check the
 // membership path, build the circuit inputs, prove, sign the open message, and post it.
+// Through Nox (or for a request above transport.maxBodyBytes) the proof goes in chunks first;
+// see upload.ts.
 
 import {
   PUBLIC_INPUT_COUNT,
@@ -10,13 +12,17 @@ import {
   witnessPublicInputs,
   witnessToJson,
 } from "@anon-credit/crypto";
+import type { Transport } from "@anon-credit/anon-transport";
 import {
   PROTOCOL_VERSION,
+  decodeBase64,
   decodeFixedHex,
   encodeBase64,
+  inlineOpenRequestSchema,
   openMessageDigest,
-  openRequestSchema,
+  uploadOpenRequestSchema,
   type AcceptedRoot,
+  type InlineOpenRequest,
   type OpenRequest,
   type OpenResponse,
   type PriceTable,
@@ -29,6 +35,7 @@ import { epochAt, type Clock } from "./random.ts";
 import { expectedLeaf, registryIsolationKey, type RegistryClient } from "./registry.ts";
 import { batchKey, type BatchRecord, type DeploymentRecord, type LeafRecord } from "./state.ts";
 import type { EncryptedStore } from "./storage.ts";
+import { encodeProof, planUpload, sendChunks, type OpenUploadMode, type UploadPolicy, type UploadStats } from "./upload.ts";
 
 // The part of the ProveKit prover that the SDK uses. BatchOpenProver from @anon-credit/prover
 // has this shape. Tests give a fake.
@@ -55,6 +62,13 @@ export interface OpenContext {
   readonly priceTableHash: string;
   // Time between eligibility checks, in milliseconds.
   readonly pollMs: number;
+  // The transport kind and body limit decide between an inline and a chunked proof.
+  readonly transport: Pick<Transport, "kind" | "maxBodyBytes">;
+  // Default upload mode of submitOpen.
+  readonly openUpload: OpenUploadMode;
+  // Chunk concurrency and retries. After a sequential fallback, later uploads of this client
+  // use one chunk at a time (`parallel` becomes 1).
+  readonly uploadPolicy: { policy: UploadPolicy };
   readonly onProgress?: (progress: OpenProgress) => void;
 }
 
@@ -114,7 +128,7 @@ export async function waitForEligibleRoot(context: OpenContext, record: BatchRec
 }
 
 export interface PreparedOpen {
-  readonly request: OpenRequest;
+  readonly request: InlineOpenRequest;
   readonly root: SelectedRoot;
   // Public inputs in circuit order. The gateway builds the same vector.
   readonly publicInputs: readonly string[];
@@ -174,7 +188,7 @@ export async function prepareOpen(
     sessionPub: key.publicKey,
     priceTableHash: decodeFixedHex(context.priceTableHash, 32),
   };
-  const request = openRequestSchema.parse({
+  const request = inlineOpenRequestSchema.parse({
     protocol_version: PROTOCOL_VERSION,
     deployment_id: context.deployment.deployment_id,
     gateway_id: context.deployment.gateway_id,
@@ -199,10 +213,75 @@ export async function prepareOpen(
   };
 }
 
+export interface SubmitOpenOptions {
+  // Override the upload mode of the context for this request.
+  readonly upload?: OpenUploadMode;
+}
+
+export interface SubmitOpenResult {
+  readonly response: OpenResponse;
+  readonly record: BatchRecord;
+  // Measurements of the chunked upload, or null for an inline proof.
+  readonly upload: UploadStats | null;
+}
+
+// true if the proof must go in chunks.
+export function useChunkedUpload(mode: OpenUploadMode, transport: Pick<Transport, "kind" | "maxBodyBytes">, request: InlineOpenRequest): boolean {
+  switch (mode) {
+    case "chunked":
+      return true;
+    case "inline":
+      return false;
+    case "auto":
+      // The request is ASCII JSON, so the string length is the body size.
+      return transport.kind === "anon" || JSON.stringify(request).length > transport.maxBodyBytes;
+  }
+}
+
+// Upload the proof of `request` in chunks on the batch isolation key. Return the open request
+// with proof_upload in place of proof, and the measurements.
+async function uploadProof(context: OpenContext, batchId: string, request: InlineOpenRequest): Promise<{ readonly wire: OpenRequest; readonly stats: UploadStats }> {
+  const proof = decodeBase64(request.proof);
+  const plan = planUpload(batchId, await encodeProof(proof));
+  const { proof: _inline, ...fields } = request;
+  const wire = uploadOpenRequestSchema.parse({ ...fields, proof_upload: plan.reference });
+  const holder = context.uploadPolicy;
+  const stats = await sendChunks(
+    plan,
+    holder.policy,
+    {
+      send: (chunk) => context.gateway.openChunk(chunk, batchId),
+      sleep: (ms) => context.clock.sleep(ms),
+      now: () => performance.now(),
+    },
+    proof.byteLength,
+  );
+  if (stats.fellBack) holder.policy = { ...holder.policy, parallel: 1 };
+  return { wire, stats };
+}
+
 // Post the open request. On success, store the session with the frozen price table.
-// existing is true for an exact retry; the units and the sequence are not reset.
-export async function submitOpen(context: OpenContext, record: BatchRecord, request: OpenRequest): Promise<{ readonly response: OpenResponse; readonly record: BatchRecord }> {
-  const response = await context.gateway.open(request, record.batch_id);
+// existing is true for an exact retry; the units and the sequence are not reset. An exact
+// retry with a chunked proof sends the chunks again: the gateway deleted the upload.
+export async function submitOpen(
+  context: OpenContext,
+  record: BatchRecord,
+  request: InlineOpenRequest,
+  options: SubmitOpenOptions = {},
+): Promise<SubmitOpenResult> {
+  let response: OpenResponse;
+  let upload: UploadStats | null = null;
+  switch (useChunkedUpload(options.upload ?? context.openUpload, context.transport, request)) {
+    case true: {
+      const uploaded = await uploadProof(context, record.batch_id, request);
+      upload = uploaded.stats;
+      response = await context.gateway.open(uploaded.wire, record.batch_id);
+      break;
+    }
+    case false:
+      response = await context.gateway.open(request, record.batch_id);
+      break;
+  }
   const session = response.session;
   if (session.batch_id !== record.batch_id || session.session_pub !== record.session_pub) {
     throw new SdkError("invalid_response", "the open response is for a different batch or session key");
@@ -225,5 +304,5 @@ export async function submitOpen(context: OpenContext, record: BatchRecord, requ
     },
   };
   await context.store.write(batchKey(record.batch_id), updated);
-  return { response, record: updated };
+  return { response, record: updated, upload };
 }

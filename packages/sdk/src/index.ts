@@ -15,7 +15,7 @@
 
 export { PROTOCOL_VERSION } from "@anon-credit/protocol";
 export { BACKUP_PREFIX, backupSchema, decodeBackup, encodeBackup, type Backup } from "./backup.ts";
-export { createClient, importBackup, type BatchSummary, type Client, type ClientConfig } from "./client.ts";
+export { createClient, importBackup, type BatchSummary, type Client, type ClientConfig, type OpenOutcome } from "./client.ts";
 export { LostResultError, SdkError, ServiceError, sdkErrorCodeSchema, type SdkErrorCode } from "./errors.ts";
 export { buildStatusRequest, gatewayClient, type GatewayClient } from "./gateway.ts";
 export {
@@ -33,12 +33,15 @@ export {
   prepareOpen,
   selectRoot,
   submitOpen,
+  useChunkedUpload,
   waitForEligibleRoot,
   type OpenContext,
   type OpenProgress,
   type PreparedOpen,
   type ProverLike,
   type SelectedRoot,
+  type SubmitOpenOptions,
+  type SubmitOpenResult,
 } from "./open.ts";
 export { epochAt, systemClock, webCryptoRandom, type Clock, type RandomSource } from "./random.ts";
 export { CONFIG_ISOLATION_KEY, expectedLeaf, registryClient, registryIsolationKey, verifyPath, type RegistryClient } from "./registry.ts";
@@ -63,6 +66,18 @@ export {
   type PendingSpend,
   type SessionRecord,
 } from "./state.ts";
+export {
+  DEFAULT_UPLOAD_POLICY,
+  encodeProof,
+  planUpload,
+  sendChunks,
+  type EncodedProof,
+  type OpenUploadMode,
+  type UploadDeps,
+  type UploadPlan,
+  type UploadPolicy,
+  type UploadStats,
+} from "./upload.ts";
 export {
   DEFAULT_KDF_ITERATIONS,
   indexedDbStorage,
