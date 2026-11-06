@@ -26,6 +26,16 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# Versions local to this crate. Cargo.lock already has each of them.
+async-trait = "0.1.92"
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+tower-http = { version = "0.6.11", default-features = false, features = ["cors"] }
+
+[dev-dependencies]
+ed25519-dalek.workspace = true
+http-body-util = "0.1.5"
+tempfile = "3.27.0"
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
 
 [[bin]]
 name = "gateway"
