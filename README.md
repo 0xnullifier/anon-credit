@@ -14,7 +14,7 @@ Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not dele
 |---|---|---|
 | 0. Workspace | Cargo and pnpm workspaces, package boundaries, configuration profiles, checks | Done |
 | 1. Proof feasibility | Pin ProveKit and Noir, batch-open circuit, hash encodings, artifacts | Done (1A gate, 1B statement, 1C real circuit in Chromium, verifier sidecar) |
-| 2. Credit issuance | Sepolia contracts, issuer indexing, MMR snapshots, root publication | Not started |
+| 2. Credit issuance | Sepolia contracts, issuer indexing, MMR snapshots, root publication | Done in code and tests; Sepolia deployment and a real finalized payment are open (the user deploys) |
 | 3. Gateway | Open, spend, receipts, status recovery, pricing, limits | Not started |
 | 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Not started |
 | 5. Dashboard | Admin snapshots, event stream, session views, demo IP attribution | Not started |
@@ -83,7 +83,8 @@ PROVEKIT_GATE=1 ./check.sh   # also run both Chromium gates (sample and batch-op
 Other commands:
 
 ```sh
-cargo run --bin issuer      # print issuer settings and exit
+cargo run --bin issuer -- --print-settings   # print issuer settings and exit
+cargo run --bin issuer      # run the issuer (needs a deployment file and SEPOLIA_RPC_URL)
 cargo run --bin gateway     # print gateway settings and exit
 pnpm dashboard:dev          # dashboard on http://localhost:5174
 pnpm example:e2e            # placeholder: prints settings, exits with code 2 until phase 4
@@ -102,9 +103,9 @@ check.sh                All checks
 crates/
   protocol/             Wire structures, signing bytes, errors, configuration IDs, settings
   crypto/               Keccak-256, Ed25519 checks; Poseidon2 after phase 1
-  registry/             MMR (phase 2)
+  registry/             MMR, proofs, witness builder, SQLite store and root snapshots
   prover/               ProveKit verifier adapter and loopback verifier sidecar (separate nightly workspace)
-  issuer/               Issuer service (phase 2); binary `issuer`
+  issuer/               Issuer service: indexer, issuance, root publisher, /v1 API; binary `issuer`
   gateway/              Gateway service (phase 3); binary `gateway`
 
 packages/
@@ -147,10 +148,15 @@ the environment. The services print `set` or `not set` for secrets, never the va
 |---|---|---|
 | `DEPLOYMENT_CONFIG` | not set | Path of the deployment TOML file. |
 | `EPOCH_SECONDS` | `30` | Epoch length. Testnet 30, production 900. Must equal the deployment value if both are set. |
-| `ISSUER_BIND` | `127.0.0.1:8080` | Issuer API listen address. |
-| `ISSUER_DATABASE_PATH` | `data/issuer.db` | Issuer SQLite database. |
+| `ISSUER_BIND` | `0.0.0.0:8080` | Issuer API listen address. |
+| `ISSUER_DB_PATH` | `data/issuer.db` | Issuer SQLite database. |
 | `SEPOLIA_RPC_URL` | not set | Sepolia RPC for payment indexing and root publication. Secret if it has a key. |
-| `ISSUER_PUBLISHER_KEY` | not set | Root publisher private key. Secret. |
+| `ISSUER_PRIVATE_KEY` | not set | Root publisher private key (`issuer_address`). Secret. |
+| `SALE_ADDRESS`, `ROOT_REGISTRY_ADDRESS` | deployment values | Optional. Must equal the deployment values if set. |
+| `ISSUER_START_BLOCK` | `0` | First block of the sale indexer: the `CreditSale` deployment block. |
+| `ISSUER_INDEX_POLL_SECONDS`, `ISSUER_PUBLISH_POLL_SECONDS` | `12`, `5` | Time between indexer and publisher passes. |
+| `ISSUER_LOG_CHUNK_BLOCKS` | `1000` | Largest block range of one `eth_getLogs` request. |
+| `ISSUER_ADDRESS`, `BATCH_PRICE_WEI` | not set, `100000000000000` | Inputs of `contracts/script/Deploy.s.sol`. |
 | `GATEWAY_PUBLIC_BIND` | `127.0.0.1:8081` | Gateway public API listen address. |
 | `GATEWAY_ADMIN_BIND` | `127.0.0.1:8082` | Gateway admin API listen address. Keep it private. |
 | `GATEWAY_DATABASE_PATH` | `data/gateway.db` | Gateway SQLite database. |
@@ -339,6 +345,127 @@ beta.26 does not export the standard library sponge. Do not run `nargo fmt` on t
 New dependency versions (local to the crate manifests): ark-bn254 0.5.0 and ark-ff 0.5.0 in
 `anon-credit-crypto`, proptest 1.12.0 (dev) in `anon-credit-registry`, zod 4.6.7 in
 `@anon-credit/crypto`.
+
+## Credit issuance (phase 2)
+
+### Parts
+
+| Part | Path |
+|---|---|
+| `CreditSale`, `RootRegistry`, deploy script, Foundry tests | `contracts/` (see [contracts/README.md](contracts/README.md)) |
+| SQLite MMR store and root snapshots | `crates/registry/src/sqlite.rs` |
+| Issuer service | `crates/issuer/` |
+| Issuer API envelopes | `crates/protocol/src/issuer_api.rs`, `packages/protocol/src/issuer-api.ts` |
+| Shared API examples | `fixtures/protocol/issuer-api.json` |
+
+New error codes: `not_found` and `payment_invalid` (both not retryable).
+
+### Deploy the contracts
+
+The user deploys. No check broadcasts a transaction.
+
+```sh
+export PATH="$HOME/.foundry/bin:$PATH"
+cd contracts
+export SEPOLIA_RPC_URL=... ISSUER_PRIVATE_KEY=... ISSUER_ADDRESS=0x... BATCH_PRICE_WEI=100000000000000 EPOCH_SECONDS=30
+forge script script/Deploy.s.sol:Deploy --rpc-url $SEPOLIA_RPC_URL --broadcast --private-key $ISSUER_PRIVATE_KEY
+```
+
+The verify commands and the deployment record shape (`contracts/deployments/sepolia.example.json`)
+are in `contracts/README.md`. Then copy `config/deployment.testnet.template.toml`, and set
+`sale_address`, `root_registry_address`, and `issuer_address` (lowercase hex).
+
+### Run the issuer against Sepolia
+
+```sh
+export DEPLOYMENT_CONFIG=config/deployment.sepolia.toml   # your copy with the real addresses
+export SEPOLIA_RPC_URL=https://...                        # secret; must support the "finalized" tag
+export ISSUER_PRIVATE_KEY=0x...                           # secret; the address must be issuer_address
+export ISSUER_START_BLOCK=<CreditSale deployment block>
+export ISSUER_DB_PATH=data/issuer.db
+cargo run --release --bin issuer
+```
+
+At start, the issuer checks `eth_chainId`, `CreditSale.issuer()` and `batchPriceWei()`,
+`RootRegistry.issuer()` and `epochSeconds()`, and the publisher key address. It refuses a
+database of a different `deployment_id`. Without `ISSUER_PRIVATE_KEY`, it records roots but does
+not send them. Put an HTTPS reverse proxy in front of port 8080.
+
+### HTTP API (all under `/v1`)
+
+| Method and path | Result |
+|---|---|
+| `GET /config` | Deployment, `deployment_id`, batch price, purchase limit, root window. |
+| `POST /topups` `{tx_hash, log_index}` | 200 issued, 202 pending (tracked), 422 `payment_invalid`. Never mints from client values. |
+| `GET /topups/:tx_hash/:log_index` | Stored state: issued (leaf indices, insertion epoch, eligible epoch, expiry), pending, or rejected. 404 if not tracked. |
+| `GET /roots?from=E&limit=N` | Publication records with state `pending`, `submitted`, `included`, `finalized`, `skipped`, or `failed`. Default: the last 96. |
+| `GET /tree/path/:leaf_index?root=R` | Complete MMR proof against the snapshot with root `R`. 404 if `R` is not a kept snapshot or the leaf is not in it. |
+| `GET /epoch` | Current epoch, epoch length, clock, seconds until the next boundary. |
+| `GET /events/leaves?from=N&limit=L` | `LeafAppended(index, leaf)` events (FUTURE.md C6). |
+| `GET /events/roots?from=E&limit=L` | `RootUpdated(index, root)` events of roots with a successful `postRoot` receipt. |
+
+Errors use `ErrorBody` with a stable code. Unknown body fields and unknown query parameters
+are rejected (400 `invalid_request`). The body limit is 4 KiB. CORS allows any origin for `GET`
+only. The issuer does not record client addresses.
+
+### How issuance timing works
+
+1. The client calls `CreditSale.buy(commitments)` with exactly `batch_price_wei * n`.
+2. The indexer reads `Purchased` logs only up to the RPC `finalized` block (about 13 minutes on
+   Sepolia). For each log, it checks the contract address, the event, the amounts, the receipt
+   status, and the canonical block hash. If the RPC gives no finalized block, issuance waits
+   and reports `finality_unavailable`. A fixed block depth is never used.
+3. In one SQLite transaction, the issuer records the payment, keyed by
+   `(chain_id, tx_hash, log_index)`, and appends one leaf for each commitment:
+   `leaf = H(DOM_LEAF, c, K, expiry)`, `expiry = insertion_epoch + 35,040`. The issuer sets the
+   insertion epoch (C8). A repeated payment returns the stored issuance and appends nothing.
+4. When epoch `e` closes (30 s on testnet), the publisher records the snapshot of `e` (the
+   leaves with insertion epoch `<= e`) and a pending publication in one transaction. A leaf
+   never gets an epoch that already has a snapshot. Leaves of epoch `e` are eligible from
+   `e + 1`.
+5. The publisher signs `postRoot(e, root, leaf_count)`, stores the signed bytes, then sends
+   them. It waits until the latest block time passes the end of `e`. One transaction is in
+   flight at a time. If it falls behind, it sends only the newest pending epoch and marks the
+   older ones `skipped`. After a restart, it sends the stored bytes again and reconciles the
+   receipt: `included`, then `finalized` when the block is final and canonical. A dropped or
+   reverted transaction becomes `failed`; the next epoch replaces it.
+6. The gateway reads roots from `RootRegistry` after root finality (about 13 more minutes).
+
+Thus the first open after a purchase waits for payment finality, one epoch boundary, root
+publication, and root finality. After that, a new root comes every 30 s.
+
+Gas: the issuer publishes every epoch, also with no new leaves, so that the gateway always has a
+fresh root. At 30 s epochs this is 2,880 `postRoot` transactions each day (96 each day at 900 s).
+Fund the issuer key for this.
+
+### Database (`ISSUER_DB_PATH`, WAL, `synchronous = FULL`)
+
+| Table | Key | Contents |
+|---|---|---|
+| `mmr_leaves` | `leaf_index` | Leaf value. |
+| `mmr_nodes` | `(height, node_index)` | Hash of each complete subtree. |
+| `mmr_root_snapshots` | `epoch` | Leaf count and root at the end of a closed epoch. All are kept. |
+| `issuer_meta` | `key` | `deployment_id` of the database. |
+| `payments` | `(chain_id, tx_hash, log_index)` | Event values, block, insertion epoch, expiry, first leaf. |
+| `issued_leaves` | `leaf_index` | Payment, commitment, insertion epoch. |
+| `topup_tracking` | `(chain_id, tx_hash, log_index)` | Registered payments that are pending or rejected. At most 10,000; rows without a receipt expire after 1 hour. |
+| `root_publications` | `epoch` | State, signed transaction, nonce, receipt block. |
+| `indexer_state` | `id = 1` | Next block of the indexer. |
+
+### Tests
+
+```sh
+cargo test -p anon-credit-registry --test sqlite_store   # equivalence with the memory store, rollback, restart
+cargo test -p anon-credit-issuer                         # mock chain and manual clock; no network
+(cd contracts && forge test)                             # 38 tests: every revert path and event
+pnpm --filter @anon-credit/protocol test                 # issuer API schemas against the shared examples
+cargo test -p anon-credit-issuer --test issuer_fixtures -- --ignored regenerate   # rewrite issuer-api.json
+```
+
+New dependencies (local to the crate manifests, already in `Cargo.lock`): alloy features
+`signer-local`, `network`, `consensus`, `eips` and tower-http 0.6.11 (`cors`) in the issuer;
+tower 0.5.3 (dev) in the issuer; sqlx and tokio (dev) in the registry. Solidity: solc 0.8.30,
+EVM `cancun`, no vendored library.
 
 ## Pinned versions
 
