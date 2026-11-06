@@ -13,12 +13,17 @@ import type { Domains, Poseidon2Params } from "./fixtures.ts";
 // Repository root, from the location of this file.
 export const REPO_ROOT = new URL("../../../", import.meta.url);
 
-export const OUTPUT_PATHS = {
+export const OUTPUT_PATHS: {
+  readonly rust: string;
+  readonly typescript: string;
+  readonly noirCircuit: string;
+  readonly noirVectors: string;
+} = {
   rust: "crates/crypto/src/constants.rs",
   typescript: "packages/crypto/src/constants.generated.ts",
   noirCircuit: "circuits/batch-open/src/constants.nr",
   noirVectors: "fixtures/protocol/noir-vectors/src/constants.nr",
-} as const;
+};
 
 const HEADER_SOURCE = "fixtures/protocol/domains.json and fixtures/protocol/poseidon2-params.json";
 
