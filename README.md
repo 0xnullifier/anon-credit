@@ -15,7 +15,7 @@ Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not dele
 | 0. Workspace | Cargo and pnpm workspaces, package boundaries, configuration profiles, checks | Done |
 | 1. Proof feasibility | Pin ProveKit and Noir, batch-open circuit, hash encodings, artifacts | Done (1A gate, 1B statement, 1C real circuit in Chromium, verifier sidecar) |
 | 2. Credit issuance | Sepolia contracts, issuer indexing, MMR snapshots, root publication | Done in code and tests; Sepolia deployment and a real finalized payment are open (the user deploys) |
-| 3. Gateway | Open, spend, receipts, status recovery, pricing, limits | Not started |
+| 3. Gateway | Open, spend, receipts, status recovery, pricing, limits | Done in code and tests; a live run needs the deployed contracts, the sidecar, and an upstream RPC |
 | 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Not started |
 | 5. Dashboard | Admin snapshots, event stream, session views, demo IP attribution | Not started |
 | 6. Complete demo | Script and dashboard on the same paid flow through Nox | Not started |
@@ -85,7 +85,7 @@ Other commands:
 ```sh
 cargo run --bin issuer -- --print-settings   # print issuer settings and exit
 cargo run --bin issuer      # run the issuer (needs a deployment file and SEPOLIA_RPC_URL)
-cargo run --bin gateway     # print gateway settings and exit
+cargo run --bin gateway     # run the gateway (needs the sidecar; see "Gateway (phase 3)")
 pnpm dashboard:dev          # dashboard on http://localhost:5174
 pnpm example:e2e            # placeholder: prints settings, exits with code 2 until phase 4
 ```
@@ -157,14 +157,14 @@ the environment. The services print `set` or `not set` for secrets, never the va
 | `ISSUER_INDEX_POLL_SECONDS`, `ISSUER_PUBLISH_POLL_SECONDS` | `12`, `5` | Time between indexer and publisher passes. |
 | `ISSUER_LOG_CHUNK_BLOCKS` | `1000` | Largest block range of one `eth_getLogs` request. |
 | `ISSUER_ADDRESS`, `BATCH_PRICE_WEI` | not set, `100000000000000` | Inputs of `contracts/script/Deploy.s.sol`. |
-| `GATEWAY_PUBLIC_BIND` | `127.0.0.1:8081` | Gateway public API listen address. |
+| `GATEWAY_PUBLIC_BIND` | `0.0.0.0:8081` | Gateway public API listen address. |
 | `GATEWAY_ADMIN_BIND` | `127.0.0.1:8082` | Gateway admin API listen address. Keep it private. |
 | `GATEWAY_DATABASE_PATH` | `data/gateway.db` | Gateway SQLite database. |
 | `GATEWAY_UPSTREAM_RPC_URL` | not set | Upstream Sepolia RPC for paid reads. Secret if it has a key. |
 | `GATEWAY_ROOT_RPC_URL` | `SEPOLIA_RPC_URL` | RPC to read finalized roots from `RootRegistry`. |
 | `GATEWAY_ADMIN_TOKEN` | not set | Admin API bearer token. Secret. |
 | `DEMO_IP_LOGGING` | `false` | `true` only in the demo profile. Accepts only `true` or `false`. |
-| `GATEWAY_TRUSTED_PROXY` | not set | IP address of a trusted reverse proxy. |
+| `GATEWAY_TRUSTED_PROXY_ADDRS` | not set | Trusted reverse proxy addresses, comma separated. More gateway variables: "Gateway (phase 3)". |
 | `GATEWAY_CORS_ORIGINS` | `http://localhost:5173,http://localhost:5174` | Allowed origins. |
 | `NOX_BOOTSTRAP_RPC_URL` | public Sepolia RPC | Reads the Nox specifier contract. |
 | `E2E_PAYER_KEY` | not set | Test payer key for the example. Secret. Testnet funds only. |
@@ -466,6 +466,174 @@ New dependencies (local to the crate manifests, already in `Cargo.lock`): alloy 
 `signer-local`, `network`, `consensus`, `eips` and tower-http 0.6.11 (`cors`) in the issuer;
 tower 0.5.3 (dev) in the issuer; sqlx and tokio (dev) in the registry. Solidity: solc 0.8.30,
 EVM `cancun`, no vendored library.
+
+## Gateway (phase 3)
+
+The gateway (`crates/gateway`, binary `gateway`) opens anonymous sessions from batch-open
+proofs and sells paid JSON-RPC reads. It uses stable Rust. The ProveKit verifier runs in the
+separate loopback sidecar (see "Verifier sidecar"). The gateway reads roots from
+`RootRegistry` on Sepolia at the `finalized` block tag. It does not use the issuer API.
+
+### Run
+
+```sh
+# 1. Start the verifier sidecar (nightly toolchain, 127.0.0.1:8083).
+(cd crates/prover && cargo run --release -- serve --pkv ../../artifacts/batch-open/batch-open.pkv \
+  --pkv-sha256 <verifier_artifact_hash without 0x>)
+
+# 2. Start the gateway. Use a deployment file without placeholders.
+export DEPLOYMENT_CONFIG=config/deployment.testnet.toml
+export GATEWAY_UPSTREAM_RPC_URL=...        # secret if it has a key
+export SEPOLIA_RPC_URL=...                 # or GATEWAY_ROOT_RPC_URL
+export GATEWAY_ADMIN_TOKEN=$(openssl rand -hex 32)
+cargo run --release --bin gateway
+```
+
+The gateway refuses to start unless: the deployment has no placeholder values; the admin
+token has at least 16 characters; the sidecar `GET /health` reports `pkv_sha256` equal to the
+deployment `verifier_artifact_hash`, `witness_mode` `zk`, and the batch-open `circuit_id`; and
+the upstream `eth_chainId` equals `GATEWAY_UPSTREAM_CHAIN_ID` (default: the deployment
+`payment_chain_id`). The log has no secret values and no peer addresses.
+
+### Settings
+
+The shared and the older gateway variables are in the Configuration table. Phase 3 adds:
+
+| Variable | Default | Use |
+|---|---|---|
+| `GATEWAY_VERIFIER_URL` | `http://127.0.0.1:8083` | Verifier sidecar base URL. |
+| `GATEWAY_UPSTREAM_CHAIN_ID` | deployment `payment_chain_id` | Expected upstream `eth_chainId`. |
+| `GATEWAY_TRUSTED_PROXY_ADDRS` | not set | Comma-separated IP addresses of trusted reverse proxies. `GATEWAY_TRUSTED_PROXY` (one address) is also read. |
+| `GATEWAY_FORWARDED_HEADER` | `x-forwarded-for` | Forwarding header that only a trusted proxy can set. |
+| `GATEWAY_ROOT_POLL_SECONDS` | `10` | Time between root refreshes. |
+| `GATEWAY_OPEN_BODY_LIMIT_BYTES` | `16777216` | Largest `POST /v1/open` body. |
+| `GATEWAY_SPEND_BODY_LIMIT_BYTES` | `65536` | Largest `POST /v1/rpc` and `POST /v1/session/status` body. |
+| `GATEWAY_UPSTREAM_RESPONSE_LIMIT_BYTES` | `1048576` | Largest upstream response. |
+| `GATEWAY_UPSTREAM_TIMEOUT_MS` | `15000` | Upstream timeout. |
+| `GATEWAY_PROOF_CONCURRENCY`, `GATEWAY_PROOF_QUEUE_DEPTH` | `2`, `8` | Proof verifications at the same time, and open requests that wait. A full queue gives `busy`. |
+
+`GATEWAY_PUBLIC_BIND` now defaults to `0.0.0.0:8081`. The admin listener stays on
+`127.0.0.1:8082`. Response retention (60 s) and the batch lock wait (5 s) are fixed.
+
+### Public API (`/v1`, CORS for `GATEWAY_CORS_ORIGINS`)
+
+| Endpoint | Body | Result |
+|---|---|---|
+| `GET /v1/config` | | IDs, circuit ID, verifier hash, chains, epoch, windows, price table hash, limits |
+| `GET /v1/prices` | | `{price_table_hash, price_table}`; check the hash with the canonical encoding |
+| `GET /v1/roots` | | Accepted roots of the last 96 source epochs, newest first |
+| `POST /v1/open` | `OpenRequest` | `{session, existing}` |
+| `POST /v1/rpc` | `SpendRequest` | Raw JSON-RPC bytes; headers `X-Anon-Remaining`, `X-Anon-Next-Seq`, `X-Anon-Replayed` |
+| `POST /v1/session/status` | `StatusRequest` | `{session, current_epoch, latest_receipt, nonce}` |
+| `GET /v1/demo/peer` | | Only with `DEMO_IP_LOGGING=true`: `{observed_ip, attribution, proxy_hop}` |
+
+The envelopes are in `crates/protocol/src/api.rs` and `packages/protocol/src/gateway-api.ts`.
+Shared examples: `fixtures/protocol/gateway-api.json`. All envelopes reject unknown fields.
+IDs are lowercase hex, proofs, signatures, and RPC bytes are canonical base64, and `u64`
+values are decimal strings. Errors are `{code, message, retryable}`; `response_expired` adds
+`receipt`. HTTP status by code: 400 `invalid_request`/`unsupported_version`, 401
+`signature_invalid`, 402 `insufficient_units`, 404 `not_found`, 409 `session_conflict`/
+`sequence_gap`/`sequence_conflict`, 410 `response_expired`/`session_expired`, 413 for a body
+above the limit (`invalid_request`), 422 `proof_invalid`/`root_not_accepted`/
+`proof_epoch_stale`/`method_not_allowed`, 502 `upstream_failed`, 503
+`storage_unavailable`/`busy`.
+
+### Signing messages
+
+All signatures are Ed25519 with the session key over `keccak256(message)`. Integers are
+big-endian. Vectors: `fixtures/protocol/open-message.json`, `status-message.json` (made by an
+independent Python program), checked by Rust and TypeScript tests.
+
+Open (238 bytes): domain `anon-credit/open` (32) | version u16 | deployment_id (32) |
+gateway_id (32) | batch_id (32) | root (32) | leaf_count u32 | proof_epoch u64 |
+session_pub (32) | price_table_hash (32).
+
+Status (162 bytes): domain `anon-credit/status` (32) | version u16 | deployment_id (32) |
+gateway_id (32) | batch_id (32) | nonce (32).
+
+Spend: see "Protocol encodings" (182-byte header and the exact RPC bytes).
+
+Price table: canonical JSON with sorted keys and no white space,
+`{"units":{"eth_blockNumber":1,"eth_chainId":1,"eth_getBalance":2},"version":1}`.
+`price_table_hash = keccak256` of it
+(`0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f`).
+
+### Open pipeline
+
+Body limit and schema; protocol version, `deployment_id`, `gateway_id`; `batch_id` and `root`
+are canonical field elements. If the batch already has a session: a valid signature with the
+same key and the same signed message is an exact retry and returns the stored state (also after
+the proof epoch aged out; units and sequence do not reset); anything else is
+`session_conflict`. Otherwise: price table hash is current; proof epoch is the current or the
+previous epoch; root is accepted (source epoch in the last 96, leaf count equal); open
+signature; then the proof through the sidecar with public inputs that the gateway builds
+(`[circuit_id, deployment_id hi/lo, gateway_id hi/lo, root, leaf_count, proof_epoch, batch_id,
+binding]`, checked against `fixtures/protocol/batch-open-public-inputs.json`); then one insert
+under the unique `batch_id`. A zero root from `rootAt` means "not posted"; skipped epochs are
+allowed. Session deadline: `open_epoch + 35040`.
+
+### Spend pipeline
+
+Body limit and schema; signature over the spend digest with the session key and the frozen
+price table hash (before the lock and before any state change); per-batch lock (5 s, then
+`busy`); then `seq` against `next_seq`: lower with the same digest returns the stored response
+with no charge (`X-Anon-Replayed: true`), or `response_expired` with the receipt after 60 s; a
+different digest is `sequence_conflict`; higher is `sequence_gap`. Then the deadline, the
+method allowlist (`eth_chainId` and `eth_blockNumber` with no params, `eth_getBalance` with
+`[address, block]`; duplicate JSON keys, batches, and notifications are rejected), remaining
+units, and `units_total == session units_total + method units`. The gateway forwards the exact
+client bytes upstream. A JSON-RPC result or error object with HTTP 200 is charged; a transport
+failure, a non-200 status, a malformed response, or more than 1 MiB is `upstream_failed` and
+changes nothing. The debit, the receipt, and the response bytes commit in one transaction; a
+commit failure is `storage_unavailable` and the response is discarded.
+
+### Database (`GATEWAY_DATABASE_PATH`, WAL, `synchronous = FULL`)
+
+| Table | Contents |
+|---|---|
+| `sessions` | `batch_id` (key), `session_pub`, `remaining`, `units_total`, `next_seq`, `open_epoch`, `deadline_epoch`, `open_request_digest`, `open_request_json` (without proof bytes; `proof_keccak256` instead), `price_table_hash`, `proof_size`, `verify_ms`, `state`, `opened_at` |
+| `receipts` | (`batch_id`, `seq`) key, `request_digest`, `method`, `units`, `units_total`, `response_bytes` (set to NULL 60 s after commit), `committed_at` |
+| `roots` | Cache of finalized roots: `source_epoch`, `root`, `leaf_count`, `fetched_at` |
+
+A session row (the spent marker) stays through `deadline_epoch + 1`; then pruning deletes it
+with its receipts.
+
+### Admin API (`127.0.0.1:8082`, `Authorization: Bearer <GATEWAY_ADMIN_TOKEN>`)
+
+| Endpoint | Result |
+|---|---|
+| `GET /admin/v1/snapshot` | Status, verifier, root status, counters, session totals, recent events and sessions |
+| `GET /admin/v1/events` | Server-Sent Events; `id` is the monotonic event ID; reconnect with `Last-Event-ID` |
+| `GET /admin/v1/sessions/{batch_id}` | Session summary and recent receipt metadata |
+
+The token is never accepted in a URL. Envelopes: `crates/protocol/src/admin.rs` and
+`packages/protocol/src/admin-api.ts`.
+
+Events (in memory, at most 10,000 or 30 minutes): `open_received`, `open_verified`,
+`open_rejected`, `session_opened`, `rpc_received`, `rpc_completed`, `rpc_replayed`,
+`rpc_rejected`, `upstream_failed`, `storage_failed`. Debit events come only after the commit.
+Events have method names and sizes, never keys, proofs, tokens, or RPC parameters. With
+`DEMO_IP_LOGGING=false` the observed IP is `"unavailable"` and the gateway does not read the
+peer address. With `true` it is the socket peer, or, only from a trusted proxy, the first
+untrusted address of the forwarding header read from the right; the proxy hop is shown
+separately.
+
+### Tests
+
+`cargo test -p anon-credit-gateway` (no network; loopback servers only): 31 unit tests and 50
+integration tests with an injected clock, a fake root source, a fake verifier, a fake upstream,
+and a SQLite file. They cover the open checks and order, altered binding, stale epochs, the
+96-epoch window, exact retry and conflicts, concurrent opens, the full verification queue,
+balances 100 -> 99 -> 98 -> 96, replay, sequence conflict and gap, bad signatures, exhaustion,
+upstream failures, a JSON-RPC error that is charged, an injected commit failure (a SQLite
+trigger), response expiry after 60 s, restart on the same database, concurrent requests with
+one sequence, the lock wait, the session deadline and pruning, the admin token, SSE reconnect,
+forwarding headers, no IP in events or logs in the normal profile, the sidecar and upstream
+clients, and the public-input fixtures.
+
+`crates/gateway` adds these crate-local dependencies (all already in `Cargo.lock`):
+async-trait 0.1.92, futures-util 0.3.34, tower-http 0.6.11 (cors); tests: ed25519-dalek,
+http-body-util 0.1.5, tempfile 3.27.0, tower 0.5.3.
 
 ## Pinned versions
 
