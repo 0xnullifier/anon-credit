@@ -1,21 +1,25 @@
-// Phase 1 ProveKit gate: the browser proves the sample circuit and the Rust verifier
-// verifies the browser proof.
+// Phase 1 ProveKit gate: the browser proves a circuit and the Rust verifier verifies the
+// browser proof.
+//
+// Circuits: --circuit sample (circuits/provekit-sample, the default) or --circuit batch-open
+// (circuits/batch-open with the real 100-leaf gate witness).
 //
 // Steps:
-// 1. Write artifacts/provekit-sample/prover-manifest.json with the size and SHA-256 digest
-//    of every artifact. The manifest digest is the pin that the page receives.
+// 1. Write the prover manifest of the circuit with the size and SHA-256 digest of every
+//    artifact. The manifest digest is the pin that the page receives.
 // 2. Serve the test page with Vite: one server without and one with COOP/COEP headers.
 // 3. In headless Chromium, prove with the scalar build (no isolation) and the threaded
 //    build (isolated). Each page makes `runs` proofs; the first is cold.
 // 4. Verify each browser proof with crates/prover (release build). Check that a tampered
-//    proof and a wrong public input are rejected.
-// 5. Write artifacts/provekit-sample-results.json. With GATE_WRITE_FIXTURE=1, also replace
-//    the checked-in Rust test fixture artifacts/provekit-sample/proof.browser.json.
-//    Proofs are randomized, so each run gives different proof bytes.
+//    proof is rejected, and, for each public input one at a time, that a wrong expected value
+//    and an altered value in the proof are rejected.
+// 5. Write the results file. With GATE_WRITE_FIXTURE=1, also replace the checked-in Rust test
+//    fixture proof.browser.json of the circuit. Proofs are randomized, so each run gives
+//    different proof bytes.
 //
-// Needs: tooling/provekit/prepare-sample.sh and tooling/provekit/build-wasm.sh outputs,
+// Needs: tooling/provekit/prepare-sample.sh or prepare-batch-open.sh, build-wasm.sh outputs,
 // the nightly toolchain for crates/prover, and Chromium (CHROMIUM_PATH or the Playwright cache).
-// Usage: node packages/prover/dev/gate.ts
+// Usage: node packages/prover/dev/gate.ts [--circuit sample|batch-open]
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -29,18 +33,85 @@ import { z } from "zod";
 
 const repo = new URL("../../../", import.meta.url).pathname;
 const artifacts = join(repo, "artifacts");
-const sampleDir = join(artifacts, "provekit-sample");
 const wasmDir = join(artifacts, "provekit-wasm");
 const pins = readFileSync(join(repo, "tooling/provekit/pins.env"), "utf8");
 const runs = Number(process.env["GATE_RUNS"] ?? "3");
 const timeoutMs = Number(process.env["GATE_TIMEOUT_MS"] ?? "300000");
 const writeFixture = process.env["GATE_WRITE_FIXTURE"] === "1";
 
-const PUBLIC_INPUTS = [
-  "0x2defe77ad67d41ed53118ca13e97d82c88a0796fc3adb8858509598d115eccb1",
-  "0x292c827d85a6f524c3dc038c7d1fef7c3a63d666fc46b710ff5c98eeed772e",
-  "0x3e7",
-];
+// One circuit of the gate.
+interface CircuitConfig {
+  // The page parameter and the name in the results.
+  readonly name: "sample" | "batch-open";
+  // The manifest `circuit` value (the Noir package name).
+  readonly manifestCircuit: string;
+  // The artifact directory and the key files in it.
+  readonly dir: string;
+  readonly pkp: string;
+  readonly pkv: string;
+  // The expected public inputs, in circuit order.
+  readonly publicInputs: readonly string[];
+  readonly publicInputNames: readonly string[];
+  readonly prepareScript: string;
+  readonly resultsFile: string;
+}
+
+const contractSchema = z.object({
+  order: z.array(z.object({ index: z.number(), name: z.string() })),
+  gate_case: z.object({ name: z.string(), public_inputs: z.array(z.string()) }),
+});
+
+function circuitConfig(name: string): CircuitConfig {
+  switch (name) {
+    case "sample":
+      return {
+        name,
+        manifestCircuit: "provekit_sample",
+        dir: join(artifacts, "provekit-sample"),
+        pkp: "sample.pkp",
+        pkv: "sample.pkv",
+        publicInputs: [
+          "0x2defe77ad67d41ed53118ca13e97d82c88a0796fc3adb8858509598d115eccb1",
+          "0x292c827d85a6f524c3dc038c7d1fef7c3a63d666fc46b710ff5c98eeed772e",
+          "0x3e7",
+        ],
+        publicInputNames: ["root", "batch_id", "epoch"],
+        prepareScript: "tooling/provekit/prepare-sample.sh",
+        resultsFile: join(artifacts, "provekit-sample-results.json"),
+      };
+    case "batch-open": {
+      // The order contract is the source of the expected public inputs.
+      const contract = contractSchema.parse(
+        JSON.parse(readFileSync(join(repo, "fixtures/protocol/batch-open-public-inputs.json"), "utf8")),
+      );
+      return {
+        name,
+        manifestCircuit: "batch_open",
+        dir: join(artifacts, "batch-open"),
+        pkp: "batch-open.pkp",
+        pkv: "batch-open.pkv",
+        publicInputs: contract.gate_case.public_inputs,
+        publicInputNames: contract.order.map((entry) => entry.name),
+        prepareScript: "tooling/provekit/prepare-batch-open.sh",
+        resultsFile: join(artifacts, "batch-open-results.json"),
+      };
+    }
+    default:
+      throw new Error(`unknown circuit ${name}; use sample or batch-open`);
+  }
+}
+
+function circuitArgument(): string {
+  const index = process.argv.indexOf("--circuit");
+  switch (index) {
+    case -1:
+      return "sample";
+    default:
+      return process.argv[index + 1] ?? "";
+  }
+}
+
+const config = circuitConfig(circuitArgument());
 
 function pin(name: string): string {
   const match = new RegExp(`^${name}=(.+)$`, "m").exec(pins);
@@ -55,10 +126,10 @@ function sha256(bytes: Uint8Array): string {
 // A manifest entry. The path is relative to the manifest file.
 function entry(path: string): { path: string; sha256: string; bytes: number } {
   if (!existsSync(path)) {
-    throw new Error(`${relative(repo, path)} is missing. Run tooling/provekit/prepare-sample.sh and build-wasm.sh.`);
+    throw new Error(`${relative(repo, path)} is missing. Run ${config.prepareScript} and build-wasm.sh.`);
   }
   const bytes = readFileSync(path);
-  return { path: relative(sampleDir, path), sha256: sha256(bytes), bytes: bytes.byteLength };
+  return { path: relative(config.dir, path), sha256: sha256(bytes), bytes: bytes.byteLength };
 }
 
 function helperPath(): string {
@@ -71,7 +142,7 @@ function helperPath(): string {
 function writeManifest(): { path: string; sha256: string; manifest: object } {
   const manifest = {
     format: "anon-credit/prover-manifest/v1",
-    circuit: "provekit_sample",
+    circuit: config.manifestCircuit,
     provekit: {
       repo: pin("PROVEKIT_REPO"),
       rev: pin("PROVEKIT_REV"),
@@ -79,9 +150,9 @@ function writeManifest(): { path: string; sha256: string; manifest: object } {
       hash: pin("PROVEKIT_HASH"),
     },
     noir: pin("NOIR_VERSION"),
-    numPublicInputs: PUBLIC_INPUTS.length,
-    pkp: entry(join(sampleDir, "sample.pkp")),
-    pkv: entry(join(sampleDir, "sample.pkv")),
+    numPublicInputs: config.publicInputs.length,
+    pkp: entry(join(config.dir, config.pkp)),
+    pkv: entry(join(config.dir, config.pkv)),
     wasm: {
       scalar: {
         glue: entry(join(wasmDir, "scalar/provekit_wasm.js")),
@@ -94,7 +165,7 @@ function writeManifest(): { path: string; sha256: string; manifest: object } {
       },
     },
   };
-  const path = join(sampleDir, "prover-manifest.json");
+  const path = join(config.dir, "prover-manifest.json");
   const text = `${JSON.stringify(manifest, null, 2)}\n`;
   writeFileSync(path, text);
   return { path, sha256: sha256(Buffer.from(text)), manifest };
@@ -146,6 +217,7 @@ const runSchema = z.object({
   wasmMemoryBytes: z.number().nullable(),
 });
 const pageResultSchema = z.object({
+  circuit: z.string(),
   info: z.object({
     mode: z.string(),
     threads: z.number(),
@@ -187,11 +259,11 @@ const benchOutputSchema = z.object({
 
 const proverCli = join(repo, "crates/prover/target/release/anon-credit-prover");
 
-function rustArgs(command: string, proof: string, publicInputs: string[], pkvSha256: string): string[] {
+function rustArgs(command: string, proof: string, publicInputs: readonly string[], pkvSha256: string): string[] {
   return [
     command,
     "--pkv",
-    join(sampleDir, "sample.pkv"),
+    join(config.dir, config.pkv),
     "--pkv-sha256",
     pkvSha256,
     "--proof",
@@ -200,13 +272,13 @@ function rustArgs(command: string, proof: string, publicInputs: string[], pkvSha
   ];
 }
 
-function rustVerify(proof: string, publicInputs: string[], pkvSha256: string): { ok: boolean; stdout: string; stderr: string } {
+function rustVerify(proof: string, publicInputs: readonly string[], pkvSha256: string): { ok: boolean; stdout: string; stderr: string } {
   const result = spawnSync(proverCli, rustArgs("verify", proof, publicInputs, pkvSha256), { encoding: "utf8" });
   return { ok: result.status === 0, stdout: result.stdout, stderr: result.stderr };
 }
 
 function rustBench(proof: string, pkvSha256: string, threads: string): z.infer<typeof benchOutputSchema> {
-  const out = execFileSync(proverCli, [...rustArgs("bench", proof, PUBLIC_INPUTS, pkvSha256), "--iterations", "50"], {
+  const out = execFileSync(proverCli, [...rustArgs("bench", proof, config.publicInputs, pkvSha256), "--iterations", "50"], {
     encoding: "utf8",
     env: { ...process.env, RAYON_NUM_THREADS: threads },
   });
@@ -222,6 +294,15 @@ function withPublicInput(proofText: string, index: number, value: bigint): strin
   return JSON.stringify(proof);
 }
 
+// The value plus one. No expected value is p - 1, so the result is a field element.
+function plusOne(text: string): bigint {
+  return BigInt(text) + 1n;
+}
+
+function hex64(value: bigint): string {
+  return `0x${value.toString(16).padStart(64, "0")}`;
+}
+
 // Change one character in the middle of narg_string. The JSON stays valid.
 function tamper(proofText: string): string {
   const proof = z.object({ whir_r1cs_proof: z.object({ narg_string: z.string() }).loose() }).loose().parse(JSON.parse(proofText));
@@ -232,10 +313,39 @@ function tamper(proofText: string): string {
   return JSON.stringify(proof);
 }
 
+// The negative checks of one browser proof. Each must be rejected by the Rust verifier.
+function negativeChecks(name: string, proofText: string, proofPath: string, scratch: string, pkvSha256: string): object {
+  const tamperedPath = join(scratch, `${name}-tampered.json`);
+  writeFileSync(tamperedPath, tamper(proofText));
+  const tampered = rustVerify(tamperedPath, config.publicInputs, pkvSha256);
+  if (tampered.ok) throw new Error(`GATE FAILED: Rust accepted a tampered ${name} proof`);
+  const perInput: Record<string, object> = {};
+  config.publicInputs.forEach((value, index) => {
+    const input = config.publicInputNames[index] ?? String(index);
+    const altered = plusOne(value);
+    const wrongInputs = config.publicInputs.map((original, position) => (position === index ? hex64(altered) : original));
+    // The gateway expects a different value than the proof has.
+    const wrong = rustVerify(proofPath, wrongInputs, pkvSha256);
+    if (wrong.ok) throw new Error(`GATE FAILED: Rust accepted the ${name} proof with a wrong expected ${input}`);
+    // The proof and the expected values agree on the altered value, but the prover bound the original.
+    const alteredPath = join(scratch, `${name}-altered-${index}.json`);
+    writeFileSync(alteredPath, withPublicInput(proofText, index, altered));
+    const alteredResult = rustVerify(alteredPath, wrongInputs, pkvSha256);
+    if (alteredResult.ok) throw new Error(`GATE FAILED: Rust accepted a ${name} proof with an altered ${input}`);
+    perInput[input] = {
+      wrongExpectedValueRejected: wrong.stderr.trim(),
+      alteredProofValueRejected: alteredResult.stderr.trim(),
+    };
+  });
+  return { tamperedRejected: tampered.stderr.trim(), perPublicInput: perInput };
+}
+
 async function main(): Promise<void> {
+  console.log(`circuit: ${config.name}`);
   const { sha256: manifestSha256, manifest } = writeManifest();
   console.log(`manifest sha256 ${manifestSha256}`);
-  const pkvSha256 = sha256(readFileSync(join(sampleDir, "sample.pkv")));
+  const pkvBytes = readFileSync(join(config.dir, config.pkv));
+  const pkvSha256 = sha256(pkvBytes);
 
   console.log("build crates/prover (release)");
   execFileSync("cargo", ["build", "--release", "--quiet"], { cwd: join(repo, "crates/prover"), stdio: "inherit" });
@@ -250,7 +360,7 @@ async function main(): Promise<void> {
   const pages: Record<string, PageResult> = {};
   try {
     for (const scenario of scenarios) {
-      const url = `http://localhost:${scenario.port}/?mode=${scenario.mode}&runs=${runs}&sha256=${manifestSha256}`;
+      const url = `http://localhost:${scenario.port}/?circuit=${config.name}&mode=${scenario.mode}&runs=${runs}&sha256=${manifestSha256}`;
       console.log(`prove in Chromium: ${scenario.name}`);
       pages[scenario.name] = await provePage(browserPath, url);
     }
@@ -266,37 +376,26 @@ async function main(): Promise<void> {
     const proofPath = join(scratch, `${name}.json`);
     writeFileSync(proofPath, page.proofText);
     if (name === "scalar") browserProof = proofPath;
-    const valid = rustVerify(proofPath, PUBLIC_INPUTS, pkvSha256);
+    const valid = rustVerify(proofPath, config.publicInputs, pkvSha256);
     if (!valid.ok) throw new Error(`GATE FAILED: Rust rejected the ${name} browser proof: ${valid.stderr}`);
-    const tamperedPath = join(scratch, `${name}-tampered.json`);
-    writeFileSync(tamperedPath, tamper(page.proofText));
-    const tampered = rustVerify(tamperedPath, PUBLIC_INPUTS, pkvSha256);
-    if (tampered.ok) throw new Error(`GATE FAILED: Rust accepted a tampered ${name} proof`);
-    const wrongInputs = [PUBLIC_INPUTS[0] ?? "", PUBLIC_INPUTS[1] ?? "", "0x3e8"];
-    const wrong = rustVerify(proofPath, wrongInputs, pkvSha256);
-    if (wrong.ok) throw new Error(`GATE FAILED: Rust accepted the ${name} proof with a wrong epoch`);
-    // The proof says epoch 1000 and the verifier expects 1000, but the prover bound 999.
-    const alteredPath = join(scratch, `${name}-altered-input.json`);
-    writeFileSync(alteredPath, withPublicInput(page.proofText, 2, 1000n));
-    const altered = rustVerify(alteredPath, wrongInputs, pkvSha256);
-    if (altered.ok) throw new Error(`GATE FAILED: Rust accepted a ${name} proof with an altered public input`);
     verification[name] = {
       valid: verifyOutputSchema.parse(JSON.parse(valid.stdout)),
-      tamperedRejected: tampered.stderr.trim(),
-      wrongExpectedInputRejected: wrong.stderr.trim(),
-      alteredProofInputRejected: altered.stderr.trim(),
+      ...negativeChecks(name, page.proofText, proofPath, scratch, pkvSha256),
     };
-    console.log(`Rust verify ${name}: valid; tampered, altered-input, and wrong-input proofs rejected`);
+    console.log(
+      `Rust verify ${name}: valid; tampered proof rejected; each of ${config.publicInputs.length} public inputs rejected when wrong or altered`,
+    );
   }
 
   if (writeFixture) {
-    writeFileSync(join(sampleDir, "proof.browser.json"), readFileSync(browserProof));
-    console.log("wrote artifacts/provekit-sample/proof.browser.json");
+    writeFileSync(join(config.dir, "proof.browser.json"), readFileSync(browserProof));
+    console.log(`wrote ${relative(repo, join(config.dir, "proof.browser.json"))}`);
   }
-  const nativeProof = join(sampleDir, "proof.np");
+  const nativeProof = join(config.dir, "proof.np");
   const wasmScalar = readFileSync(join(wasmDir, "scalar/provekit_wasm_bg.wasm"));
   const wasmThreaded = readFileSync(join(wasmDir, "threaded/provekit_wasm_bg.wasm"));
-  const pkp = readFileSync(join(sampleDir, "sample.pkp"));
+  const pkp = readFileSync(join(config.dir, config.pkp));
+  const browserProofBytes = readFileSync(browserProof);
   const results = {
     gate: "browser proves, Rust verifies",
     status: "passed",
@@ -317,16 +416,25 @@ async function main(): Promise<void> {
     },
     proofSystem: { hash: pin("PROVEKIT_HASH"), witnessMode: pin("PROVEKIT_WITNESS_MODE") },
     circuit: {
-      name: "provekit_sample",
+      name: config.manifestCircuit,
       numConstraints: pages["scalar"]?.info.numConstraints,
       numWitnesses: pages["scalar"]?.info.numWitnesses,
-      numPublicInputs: PUBLIC_INPUTS.length,
+      numPublicInputs: config.publicInputs.length,
+      publicInputNames: config.publicInputNames,
     },
     manifestSha256,
+    pkvSha256,
     manifest,
+    artifactSize: {
+      pkpBytes: pkp.byteLength,
+      pkpGzipBytes: gzipSync(pkp).byteLength,
+      pkvBytes: pkvBytes.byteLength,
+      wasmScalarBytes: wasmScalar.byteLength,
+      wasmThreadedBytes: wasmThreaded.byteLength,
+    },
     proofSize: {
-      browserJsonBytes: readFileSync(browserProof).byteLength,
-      browserJsonGzipBytes: gzipSync(readFileSync(browserProof)).byteLength,
+      browserJsonBytes: browserProofBytes.byteLength,
+      browserJsonGzipBytes: gzipSync(browserProofBytes).byteLength,
       nativeBinaryBytes: readFileSync(nativeProof).byteLength,
     },
     artifactDownload: {
@@ -359,9 +467,9 @@ async function main(): Promise<void> {
       benchBrowserProofAllThreads: rustBench(browserProof, pkvSha256, String(cpus().length)),
     },
   };
-  writeFileSync(join(artifacts, "provekit-sample-results.json"), `${JSON.stringify(results, null, 2)}\n`);
+  writeFileSync(config.resultsFile, `${JSON.stringify(results, null, 2)}\n`);
   console.log("GATE PASSED: browser proofs verified by the Rust verifier");
-  console.log(`results: ${relative(repo, join(artifacts, "provekit-sample-results.json"))}`);
+  console.log(`results: ${relative(repo, config.resultsFile)}`);
 }
 
 main().catch((error) => {
