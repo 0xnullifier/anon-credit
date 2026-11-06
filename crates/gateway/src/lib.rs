@@ -40,5 +40,6 @@ pub mod spend;
 pub mod status;
 pub mod store;
 pub mod strict_json;
+pub mod upload;
 pub mod upstream;
 pub mod verifier;
