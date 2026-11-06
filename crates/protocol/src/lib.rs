@@ -12,6 +12,7 @@
 //!   messages ([`open`], [`status`]), the price table ([`price`]), and the wire encodings
 //!   ([`wire`]).
 
+pub mod admin;
 pub mod api;
 pub mod deployment;
 pub mod domain;
