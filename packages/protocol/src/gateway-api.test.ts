@@ -5,6 +5,7 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import fixture from "../../../fixtures/protocol/gateway-api.json" with { type: "json" };
+import { adminSnapshotSchema, gatewayEventSchema, sessionDetailSchema } from "./admin-api.ts";
 import { encodeHex } from "./bytes.ts";
 import {
   demoPeerResponseSchema,
@@ -53,7 +54,7 @@ function outcome<T extends object>(result: z.ZodSafeParseResult<T>): Outcome {
 
 // Parse a value with the schema of its envelope type.
 function parseAs(kind: string, value: Json): Outcome {
-  switch (kind.replace(/_with(out)?_receipt$/, "")) {
+  switch (kind.replace(/_with(out)?_receipt$/, "").replace(/_demo$/, "")) {
     case "open_request":
       return outcome(openRequestSchema.safeParse(value));
     case "open_response":
@@ -74,6 +75,12 @@ function parseAs(kind: string, value: Json): Outcome {
       return outcome(rootsResponseSchema.safeParse(value));
     case "demo_peer_response":
       return outcome(demoPeerResponseSchema.safeParse(value));
+    case "gateway_event":
+      return outcome(gatewayEventSchema.safeParse(value));
+    case "admin_snapshot":
+      return outcome(adminSnapshotSchema.safeParse(value));
+    case "session_detail":
+      return outcome(sessionDetailSchema.safeParse(value));
     default:
       throw new Error(`unknown envelope type ${kind}`);
   }
