@@ -9,8 +9,10 @@ export interface TransportRequestInit {
   readonly method: "GET" | "POST" | "PUT";
   readonly headers?: Readonly<Record<string, string>>;
   // JSON text. The SDK keeps the exact bytes of signed values inside the JSON envelope.
+  // Raw bytes for a binary body (proof chunks, application/octet-stream). The harness copies
+  // the bytes to the worker; it does not detach the buffer of the caller.
   // A stream body is also accepted (the harness transfers it to the worker as a stream).
-  readonly body?: string | ReadableStream<Uint8Array>;
+  readonly body?: string | Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array>;
 }
 
 export interface TransportFetchOptions {
@@ -28,7 +30,7 @@ export interface TransportLogEntry {
 export interface Transport {
   readonly kind: TransportKind;
   // Largest request body that the transport can carry, in bytes. The SDK splits a larger
-  // open request into chunks (PUT /v1/open/chunks). Nox: 40,000. Direct: Infinity.
+  // open request into chunks (PUT /v1/open/chunks/...). Nox: 40,000. Direct: Infinity.
   readonly maxBodyBytes: number;
   // Send one request. Fail on a transport failure. Never fall back to another transport.
   readonly fetch: (url: string, init: TransportRequestInit, options: TransportFetchOptions) => Promise<Response>;

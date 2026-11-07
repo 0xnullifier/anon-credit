@@ -12,6 +12,8 @@ interface SentCall {
   readonly method: string | undefined;
   readonly isolationKey: string | undefined;
   readonly body: string | undefined;
+  readonly bytes: Uint8Array | undefined;
+  readonly contentType: string | undefined;
 }
 
 // A fake bootstrap RPC on the given chain.
@@ -44,6 +46,8 @@ function fakeFactory(sent: SentCall[], state: { closed: boolean; address: string
           method: requestInit.method,
           isolationKey: requestInit.anonOptions?.isolationKey,
           body: typeof requestInit.body === "string" ? requestInit.body : undefined,
+          bytes: requestInit.body instanceof Uint8Array ? requestInit.body : undefined,
+          contentType: new Headers(requestInit.headers).get("content-type") ?? undefined,
         });
         return new Response("{}", { status: 200, headers: { "x-anon-remaining": "99", "x-anon-next-seq": "1" } });
       },
@@ -83,9 +87,17 @@ describe("createAnonTransport", () => {
     expect(response.headers.get("x-anon-remaining")).toBe("99");
     await transport.fetch("https://gateway.example/v1/rpc", { method: "POST", body: "{}" }, { isolationKey: "batch-b" });
     await transport.fetch("https://gateway.example/v1/rpc", { method: "POST", body: "{}" }, { isolationKey: "batch-a" });
-    await transport.fetch("https://gateway.example/v1/open/chunks", { method: "PUT", body: "{}" }, { isolationKey: "batch-a" });
+    // A binary body with a custom content type reaches the worker unchanged.
+    const chunk = new Uint8Array([0, 1, 2, 255]);
+    await transport.fetch(
+      "https://gateway.example/v1/open/chunks/0x01/0x02/4/1/0",
+      { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: chunk },
+      { isolationKey: "batch-a" },
+    );
     expect(sent.map((call) => call.isolationKey)).toEqual(["batch-a", "batch-b", "batch-a", "batch-a"]);
     expect(sent.at(-1)?.method).toBe("PUT");
+    expect(sent.at(-1)?.bytes).toEqual(chunk);
+    expect(sent.at(-1)?.contentType).toBe("application/octet-stream");
     expect(transport.isolationKeys()).toEqual(["batch-a", "batch-b"]);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(transport.logs.some((line) => line.text.includes("nox-worker ready 3"))).toBe(true);
@@ -191,6 +203,9 @@ describe("directTransport", () => {
     expect(directTransport({ maxBodyBytes: 1000 }).maxBodyBytes).toBe(1000);
     await transport.fetch("http://127.0.0.1:1/v1/config", { method: "GET" }, { isolationKey: "registry" });
     expect(seen[0]?.credentials).toBe("omit");
+    const chunk = new Uint8Array([9, 8, 7]);
+    await transport.fetch("http://127.0.0.1:1/v1/open/chunks/x", { method: "PUT", body: chunk }, { isolationKey: "registry" });
+    expect(seen[1]?.body).toBe(chunk);
     expect(transport.isolationKeys()).toEqual(["registry"]);
     expect(transport.logs[0]?.text).toContain("NOT anonymized");
   });

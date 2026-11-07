@@ -31,8 +31,8 @@ export function directTransport(options: DirectTransportOptions = {}): Transport
       if (closed) throw new Error("the direct transport is closed");
       keys.record(isolationKeySchema.parse(fetchOptions.isolationKey));
       pushLog(logs, { atMs: Date.now() - start, level: "debug", text: `${init.method} ${new URL(url).pathname}` });
-      // A plain fetch needs a buffered body; read a stream body first.
-      const body = typeof init.body === "string" || init.body === undefined ? init.body : await new Response(init.body).text();
+      // A plain fetch needs a buffered body; read a stream body first. Send bytes as they are.
+      const body = init.body instanceof ReadableStream ? await new Response(init.body).arrayBuffer() : init.body;
       return fetchFn(url, {
         method: init.method,
         ...(init.headers === undefined ? {} : { headers: { ...init.headers } }),
