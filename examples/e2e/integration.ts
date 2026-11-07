@@ -5,9 +5,10 @@
 // the Vite page, and then runs the step list of implementation.md section 15 in headless
 // Chromium with the DIRECT transport (Nox cannot reach localhost).
 //
-// Finality: anvil gives the "finalized" tag as latest - 2 * slots_in_an_epoch. The harness
-// starts anvil with --slots-in-an-epoch 1, so a block is final 2 blocks (2 s) later. The issuer
-// and the gateway use the real "finalized" tag; nothing is simulated.
+// Block tag: the harness uses the testnet demo profile. The issuer and the gateway read the
+// chain at BLOCK_TAG=latest, and the client has no first-use delay (maxFirstUseDelayEpochs 0).
+// Thus the epoch cadence (5 s) is the only pacing. The finalized default of production is
+// covered by the Rust settings tests (crates/protocol/src/settings.rs).
 //
 // The harness stops only the child processes that it started. It writes
 // examples/e2e/results/integration-result.json and exits nonzero on a failed step.
@@ -24,7 +25,7 @@ import { chromium, type Browser } from "playwright-core";
 import { createPublicClient, getContractAddress, http, toHex } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { z } from "zod";
-import { gatewayConfigResponseSchema, issuerConfigResponseSchema } from "@anon-credit/protocol";
+import { gatewayConfigResponseSchema, issuerConfigResponseSchema, type BlockTag } from "@anon-credit/protocol";
 import { checkFunding, registerTopup, submitPurchase, waitForIssuance } from "@anon-credit/sdk/purchase";
 import { adminCheck } from "./src/admin-check.ts";
 import { findChromium } from "./src/chromium.ts";
@@ -35,6 +36,8 @@ import { writeResult, type Json, type RunResult } from "./src/result.ts";
 import { runScenario } from "./src/scenario.ts";
 
 const EPOCH_SECONDS = 5;
+// The testnet demo profile: read the chain at the latest block. Reorg safety is traded for speed.
+const BLOCK_TAG: BlockTag = "latest";
 const BATCH_PRICE_WEI = 100_000_000_000_000n;
 const ANVIL_CHAIN_ID = 31_337;
 // The public anvil test mnemonic. Its keys hold only local test ETH.
@@ -125,15 +128,13 @@ async function main(): Promise<number> {
     const pageOrigin = `http://127.0.0.1:${pagePort}`;
 
     // Chain.
-    log(`starting anvil on ${anvilUrl} (1 s blocks, finalized = latest - 2)`);
-    procs.start("anvil", tool("anvil"), ["--block-time", "1", "--port", String(anvilPort), "--slots-in-an-epoch", "1", "--chain-id", String(ANVIL_CHAIN_ID)], {
+    log(`starting anvil on ${anvilUrl} (1 s blocks; the services read at the ${BLOCK_TAG} tag)`);
+    procs.start("anvil", tool("anvil"), ["--block-time", "1", "--port", String(anvilPort), "--chain-id", String(ANVIL_CHAIN_ID)], {
       cwd: workDir,
       env,
     });
     const chain = createPublicClient({ transport: http(anvilUrl) });
     await waitFor("anvil", 30_000, async () => (await chain.getChainId()) === ANVIL_CHAIN_ID);
-    const finalized = await chain.getBlock({ blockTag: "finalized" });
-    log(`anvil supports the finalized tag (finalized block ${finalized.number})`);
 
     // Contracts.
     const deployer = anvilKey(0);
@@ -194,13 +195,14 @@ async function main(): Promise<number> {
     await waitFor("sidecar", 60_000, async () => (await fetch(`http://127.0.0.1:${sidecarPort}/health`)).ok);
 
     // Issuer.
-    log(`starting the issuer on ${issuerUrl} (${EPOCH_SECONDS} s epochs)`);
+    log(`starting the issuer on ${issuerUrl} (${EPOCH_SECONDS} s epochs, block tag ${BLOCK_TAG})`);
     procs.start("issuer", join(REPO_ROOT, "target/debug/issuer"), [], {
       cwd: workDir,
       env: {
         ...env,
         DEPLOYMENT_CONFIG: deploymentPath,
         EPOCH_SECONDS: String(EPOCH_SECONDS),
+        BLOCK_TAG,
         ISSUER_BIND: `127.0.0.1:${issuerPort}`,
         ISSUER_DB_PATH: join(workDir, "issuer.db"),
         SEPOLIA_RPC_URL: anvilUrl,
@@ -216,13 +218,14 @@ async function main(): Promise<number> {
     const adminToken = randomBytes(24).toString("hex");
     const passphrase = randomBytes(18).toString("base64");
     secrets.push(adminToken, passphrase, deployer.key.slice(2), issuer.key.slice(2), payer.key.slice(2));
-    log(`starting the gateway on ${gatewayUrl} (root source: contract at the finalized tag)`);
+    log(`starting the gateway on ${gatewayUrl} (root source: contract at the ${BLOCK_TAG} tag)`);
     procs.start("gateway", join(REPO_ROOT, "target/debug/gateway"), [], {
       cwd: workDir,
       env: {
         ...env,
         DEPLOYMENT_CONFIG: deploymentPath,
         EPOCH_SECONDS: String(EPOCH_SECONDS),
+        BLOCK_TAG,
         GATEWAY_PUBLIC_BIND: `127.0.0.1:${gatewayPort}`,
         GATEWAY_ADMIN_BIND: `127.0.0.1:${adminPort}`,
         GATEWAY_DATABASE_PATH: join(workDir, "gateway.db"),
@@ -257,6 +260,7 @@ async function main(): Promise<number> {
       call,
       log,
       testAddress: TEST_ADDRESS,
+      rootWait: `expected in at most one epoch (${EPOCH_SECONDS} s) plus about 2 s of chain latency (block tag ${BLOCK_TAG}, no first-use delay)`,
       setup: {
         gatewayUrl,
         issuerUrl,
@@ -267,11 +271,11 @@ async function main(): Promise<number> {
         proverMode: "auto",
         passphrase,
         firstUseDelayEpochs: "random",
+        maxFirstUseDelayEpochs: 0,
         pollMs: 1000,
         eligibleTimeoutMs: 300_000,
       },
       preflight: async () => {
-        maxFirstUseDelayEpochs: 0,
         const gatewayConfig = await getJson(`${gatewayUrl}/v1/config`, gatewayConfigResponseSchema);
         const issuerConfig = await getJson(`${issuerUrl}/v1/config`, issuerConfigResponseSchema);
         const health = await getJson(`http://127.0.0.1:${sidecarPort}/health`, z.object({ pkv_sha256: z.string(), witness_mode: z.string() }));
@@ -283,6 +287,7 @@ async function main(): Promise<number> {
           upstreamChain: gatewayConfig.upstream_chain_id === ANVIL_CHAIN_ID,
           manifestPinned: issuerConfig.deployment.prover_manifest_hash === manifestSha,
           verifierPinned: health.pkv_sha256 === VERIFIER_PKV_SHA256 && health.witness_mode === "zk",
+          blockTags: issuerConfig.block_tag === BLOCK_TAG && gatewayConfig.block_tag === BLOCK_TAG,
           adminAccess: admin.ok,
         };
         const failedChecks = Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name);
@@ -330,7 +335,7 @@ async function main(): Promise<number> {
         cores: cpus().length,
         node: process.version,
         chromium: browser.version(),
-        rootSource: "contract (anvil finalized tag)",
+        rootSource: `contract (anvil ${BLOCK_TAG} tag)`,
         note: "local harness with the direct transport; the Sepolia run uses Nox",
       },
       steps: outcome.steps,
