@@ -92,6 +92,7 @@ export async function runSepolia(argv: readonly string[], env: Readonly<Record<s
       call: pageCaller(tab),
       log,
       testAddress: config.testAddress,
+      sale: { address: issuer.deployment.sale_address, batchPriceWei: BigInt(issuer.batch_price_wei) },
       rootWait: pacing.rootWait,
       setup: {
         gatewayUrl: config.gatewayUrl,

@@ -174,6 +174,8 @@ export const rpcValueSchema = z.strictObject({
   stateSource: z.enum(["headers", "status"]),
   attempts: z.number(),
   hasResult: z.boolean(),
+  // The JSON-RPC result, or null for an error object. Public chain data only.
+  result: z.json(),
   ms: z.number(),
 });
 export type RpcValue = z.infer<typeof rpcValueSchema>;

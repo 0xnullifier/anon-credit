@@ -3,6 +3,7 @@
 // purchase chain, and the timing differ.
 
 import type { Issuance } from "@anon-credit/protocol";
+import { toFunctionSelector } from "viem";
 import { z } from "zod";
 import {
   attachValueSchema,
@@ -43,6 +44,8 @@ export interface ScenarioOptions {
   readonly dashboardCheck?: (batches: readonly string[], expected: readonly number[]) => Promise<Record<string, Json>>;
   // A fixed public test address that is not the payer.
   readonly testAddress: string;
+  // The CreditSale contract and its batch price. Step 9 reads the price with eth_call.
+  readonly sale: { readonly address: string; readonly batchPriceWei: bigint };
   readonly log: (line: string) => void;
   // Step 5: a progress line with the expected wait for an eligible root (src/pacing.ts).
   readonly rootWait?: string;
@@ -71,6 +74,14 @@ function equal(actual: Json, expected: Json, what: string): void {
   check(JSON.stringify(actual) === JSON.stringify(expected), `${what}: expected ${JSON.stringify(expected)}, found ${JSON.stringify(actual)}`);
 }
 
+// The fields of a transaction receipt that step 9 checks.
+const receiptResultSchema = z.object({ transactionHash: z.string(), status: z.string() });
+
+// The ABI word of an unsigned integer: 0x and 64 lowercase hex digits.
+function abiWord(value: bigint): string {
+  return `0x${value.toString(16).padStart(64, "0")}`;
+}
+
 const STEP_NAMES: Readonly<Record<number, string>> = {
   1: "validate deployment identities, chain IDs, artifacts, connectivity",
   2: "start the browser prover and transport; make three batch secrets and session keys",
@@ -80,7 +91,7 @@ const STEP_NAMES: Readonly<Record<number, string>> = {
   6: "fetch the membership path over the registry isolation key and check it locally",
   7: "generate the batch-open proof in the browser",
   8: "open the first batch with a chunked proof upload: remaining 100, next_seq 0",
-  9: "eth_chainId, eth_blockNumber, eth_getBalance: remaining 99, 98, 96; next_seq 1, 2, 3",
+  9: "eth_chainId, eth_blockNumber, eth_getBalance, eth_call, eth_getTransactionReceipt: remaining 99, 98, 96, 93, 91; next_seq 1 to 5",
   10: "replay the first request (same response, no debit); same seq with another body is rejected",
   11: "invalid signature and sequence gap are rejected without a balance change",
   12: "spend the rest with one-unit reads; a further spend fails without a sequence change",
@@ -225,15 +236,29 @@ export async function runScenario(options: ScenarioOptions): Promise<ScenarioOut
     const a = await call({ op: "rpc", batchId: id(0), method: "eth_chainId", params: [], label: "first" }, rpcValueSchema);
     const b = await call({ op: "rpc", batchId: id(0), method: "eth_blockNumber", params: [] }, rpcValueSchema);
     const c = await call({ op: "rpc", batchId: id(0), method: "eth_getBalance", params: [options.testAddress, "latest"] }, rpcValueSchema);
-    equal([a.remaining, b.remaining, c.remaining], [99, 98, 96], "remaining");
-    equal([a.nextSeq, b.nextSeq, c.nextSeq], ["1", "2", "3"], "next_seq");
-    equal([a.seq, b.seq, c.seq], ["0", "1", "2"], "seq");
-    check(a.hasResult && b.hasResult && c.hasResult, "a read returned a JSON-RPC error");
+    // Price table version 2: eth_call (3 units) reads CreditSale.batchPriceWei(), and
+    // eth_getTransactionReceipt (2 units) reads the receipt of the purchase of step 3.
+    const callObject = { to: options.sale.address, data: toFunctionSelector("function batchPriceWei()") };
+    const d = await call({ op: "rpc", batchId: id(0), method: "eth_call", params: [callObject, "latest"] }, rpcValueSchema);
+    if (purchase === null) throw new AssertionFailure("no purchase");
+    const e = await call({ op: "rpc", batchId: id(0), method: "eth_getTransactionReceipt", params: [purchase.txHash] }, rpcValueSchema);
+    const reads = [a, b, c, d, e];
+    equal(reads.map((read) => read.remaining), [99, 98, 96, 93, 91], "remaining");
+    equal(reads.map((read) => read.nextSeq), ["1", "2", "3", "4", "5"], "next_seq");
+    equal(reads.map((read) => read.seq), ["0", "1", "2", "3", "4"], "seq");
+    check(reads.every((read) => read.hasResult), "a read returned a JSON-RPC error");
+    equal(d.result, abiWord(options.sale.batchPriceWei), "eth_call batchPriceWei()");
+    const receipt = receiptResultSchema.safeParse(e.result);
+    if (!receipt.success) throw new AssertionFailure("eth_getTransactionReceipt did not return a receipt");
+    equal(receipt.data.transactionHash.toLowerCase(), purchase.txHash.toLowerCase(), "receipt transaction hash");
+    equal(receipt.data.status, "0x1", "receipt status");
     return {
-      remaining: [a.remaining, b.remaining, c.remaining],
-      nextSeq: [a.nextSeq, b.nextSeq, c.nextSeq],
-      stateSource: [a.stateSource, b.stateSource, c.stateSource],
-      ms: [Math.round(a.ms), Math.round(b.ms), Math.round(c.ms)],
+      remaining: reads.map((read) => read.remaining),
+      nextSeq: reads.map((read) => read.nextSeq),
+      stateSource: reads.map((read) => read.stateSource),
+      ms: reads.map((read) => Math.round(read.ms)),
+      batchPriceWei: options.sale.batchPriceWei.toString(10),
+      receiptStatus: receipt.data.status,
     };
   });
 
@@ -242,8 +267,8 @@ export async function runScenario(options: ScenarioOptions): Promise<ScenarioOut
     equal(replay.httpStatus, 200, "replay status");
     check(replay.sameBody, "the replay body is not the first response");
     const status = await call({ op: "status", batchId: id(0) }, statusValueSchema);
-    equal(status.remaining, 96, "remaining after replay");
-    equal(status.nextSeq, "3", "next_seq after replay");
+    equal(status.remaining, 91, "remaining after replay");
+    equal(status.nextSeq, "5", "next_seq after replay");
     const conflict = await call({ op: "probe", batchId: id(0), kind: "conflict" }, probeValueSchema);
     equal(conflict.errorCode, "sequence_conflict", "same seq with another body");
     return { replayed: replay.replayed, replayHeadersRemaining: replay.remaining, conflict: conflict.errorCode, conflictHttp: conflict.httpStatus };
@@ -255,19 +280,19 @@ export async function runScenario(options: ScenarioOptions): Promise<ScenarioOut
     const gap = await call({ op: "probe", batchId: id(0), kind: "gap" }, probeValueSchema);
     equal(gap.errorCode, "sequence_gap", "sequence gap");
     const status = await call({ op: "status", batchId: id(0) }, statusValueSchema);
-    equal([status.remaining, status.nextSeq, status.unitsTotal], [96, "3", "4"], "balance after rejections");
+    equal([status.remaining, status.nextSeq, status.unitsTotal], [91, "5", "9"], "balance after rejections");
     return { badSignature: bad.httpStatus, gap: gap.httpStatus, remaining: status.remaining };
   });
 
   await step(12, async () => {
     const drained = await call({ op: "drain", batchId: id(0), method: "eth_chainId" }, drainValueSchema);
-    equal(drained.requests, 96, "one-unit reads");
+    equal(drained.requests, 91, "one-unit reads");
     equal(drained.remaining, 0, "remaining after drain");
-    equal(drained.nextSeq, "99", "next_seq after drain");
+    equal(drained.nextSeq, "96", "next_seq after drain");
     const code = await expectPageError(call, { op: "rpc", batchId: id(0), method: "eth_chainId", params: [] }, rpcValueSchema);
     equal(code, "insufficient_units", "spend after exhaustion");
     const status = await call({ op: "status", batchId: id(0) }, statusValueSchema);
-    equal([status.remaining, status.nextSeq, status.state], [0, "99", "exhausted"], "state after the refused spend");
+    equal([status.remaining, status.nextSeq, status.state], [0, "96", "exhausted"], "state after the refused spend");
     return { requests: drained.requests, stateSources: drained.stateSources, ms: Math.round(drained.ms), refused: code };
   });
 

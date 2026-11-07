@@ -308,6 +308,7 @@ async function handle(text: string): Promise<Json> {
         stateSource: outcome.stateSource,
         attempts: outcome.attempts,
         hasResult: "result" in outcome.response,
+        result: "result" in outcome.response ? outcome.response.result : null,
         ms: performance.now() - start,
       };
     }

@@ -1,6 +1,6 @@
 // The Sepolia example --dry-run path against fake services. No network, no browser.
 
-import { INITIAL_PRICE_TABLE, deploymentConfigSchema, deploymentId, encodeHex, priceTableHash } from "@anon-credit/protocol";
+import { CURRENT_PRICE_TABLE, deploymentConfigSchema, deploymentId, encodeHex, priceTableHash } from "@anon-credit/protocol";
 import type { FundingCheck } from "@anon-credit/sdk/purchase";
 import { describe, expect, it } from "vitest";
 import { isNonPublicIp, publicHttpsProblems, type PreflightDeps } from "./sepolia.ts";
@@ -22,7 +22,7 @@ const deploymentText = {
   prover_manifest_hash: MANIFEST,
 };
 const DEPLOYMENT_ID = encodeHex(deploymentId(deploymentConfigSchema.parse(deploymentText)));
-const PRICE_HASH = encodeHex(priceTableHash(INITIAL_PRICE_TABLE));
+const PRICE_HASH = encodeHex(priceTableHash(CURRENT_PRICE_TABLE));
 
 const env = {
   E2E_ISSUER_URL: "https://issuer.example.org",
@@ -80,7 +80,7 @@ function fakeFetch(seen: string[]): typeof fetch {
           block_tag: "latest",
         });
       case "https://gateway.example.org/v1/prices":
-        return json({ price_table_hash: PRICE_HASH, price_table: INITIAL_PRICE_TABLE });
+        return json({ price_table_hash: PRICE_HASH, price_table: CURRENT_PRICE_TABLE });
       case "https://ethereum-sepolia-rpc.publicnode.com/":
         return json({ jsonrpc: "2.0", id: 1, result: "0xaa36a7" });
       default:

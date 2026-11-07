@@ -260,6 +260,7 @@ async function main(): Promise<number> {
       call,
       log,
       testAddress: TEST_ADDRESS,
+      sale: { address: saleAddress, batchPriceWei: BATCH_PRICE_WEI },
       rootWait: `expected in at most one epoch (${EPOCH_SECONDS} s) plus about 2 s of chain latency (block tag ${BLOCK_TAG}, no first-use delay)`,
       setup: {
         gatewayUrl,
