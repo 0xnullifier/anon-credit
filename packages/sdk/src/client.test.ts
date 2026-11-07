@@ -6,6 +6,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
 import { createClient, importBackup } from "./client.ts";
 import { LostResultError, SdkError, ServiceError } from "./errors.ts";
+import { selectRoot } from "./open.ts";
 import { batchRecordSchema } from "./state.ts";
 import { indexedDbStorage, memoryStorage, openEncryptedStore } from "./storage.ts";
 import { GATEWAY_URL, ISSUER_URL, MANIFEST_SHA, fakeServices } from "./test-support/fake-services.ts";
@@ -301,6 +302,15 @@ describe("eligibility", () => {
     const setup = await testClient({ firstUseDelayEpochs: "random", delayRandom: () => 0.99 });
     await issued(setup, 1);
     expect((await setup.client.batches())[0]?.delayEpochs).toBe(3);
+  });
+
+  it("selects the root of the insertion epoch, not an older one", () => {
+    const root = (epoch: number, count: number) => ({ source_epoch: String(epoch), root: `0x${String(epoch).padStart(64, "0")}`, leaf_count: count });
+    const issuer = (epoch: number, count: number) => ({ epoch: String(epoch), root: `0x${String(epoch).padStart(64, "0")}`, leaf_count: count });
+    const leaf = { leaf_index: 4, leaf: `0x${"0".repeat(63)}1`, insertion_epoch: "1000", eligible_epoch: "1001", expiry: "36040" };
+    expect(selectRoot([root(1000, 5), root(999, 5)], [issuer(1000, 5), issuer(999, 5)], leaf)?.sourceEpoch).toBe(1000n);
+    expect(selectRoot([root(999, 5)], [issuer(999, 5)], leaf)).toBeNull();
+    expect(selectRoot([root(1000, 4)], [issuer(1000, 4)], leaf)).toBeNull();
   });
 
   it("caps the delay at maxFirstUseDelayEpochs; 0 opens at the eligible epoch", async () => {

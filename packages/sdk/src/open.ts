@@ -92,16 +92,18 @@ export function openEpoch(record: BatchRecord): bigint {
 }
 
 // The newest gateway root that the issuer also reports as finalized, whose source epoch is at
-// least the eligible epoch, and that has the leaf.
+// least the insertion epoch, and that has the leaf. The root of the insertion epoch is
+// published after that epoch closes, in the eligible epoch (insertion + 1): the client can
+// open at the epoch boundary after insertion (PRD R21).
 export function selectRoot(
   accepted: readonly AcceptedRoot[],
   finalized: readonly { readonly epoch: string; readonly root: string; readonly leaf_count: number }[],
   leaf: LeafRecord,
 ): SelectedRoot | null {
-  const eligible = BigInt(leaf.eligible_epoch);
+  const inserted = BigInt(leaf.insertion_epoch);
   const sorted = [...accepted].sort((a, b) => Number(BigInt(b.source_epoch) - BigInt(a.source_epoch)));
   for (const record of sorted) {
-    if (BigInt(record.source_epoch) < eligible || record.leaf_count <= leaf.leaf_index) continue;
+    if (BigInt(record.source_epoch) < inserted || record.leaf_count <= leaf.leaf_index) continue;
     const issuer = finalized.find((item) => item.epoch === record.source_epoch);
     if (issuer === undefined || issuer.root !== record.root || issuer.leaf_count !== record.leaf_count) continue;
     return { root: record.root, leafCount: record.leaf_count, sourceEpoch: BigInt(record.source_epoch) };
