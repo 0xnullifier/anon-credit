@@ -60,6 +60,9 @@ export function TopBar({
           </span>
         </>
       )}
+      <a className="docs-link" href="#docs">
+        docs
+      </a>
       <span className="spacer" />
       {signer === null ? null : (
         <span className="signer" title={`${signer.name}: ${signer.address}`}>

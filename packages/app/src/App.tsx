@@ -11,6 +11,8 @@ import { Setup, type SetupLine } from "./components/Setup.tsx";
 import { SpendStep } from "./components/SpendStep.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 import { WalletModal } from "./components/WalletModal.tsx";
+import { Docs } from "./docs/Docs.tsx";
+import { sectionOfHash } from "./docs/sections.ts";
 import { Hex } from "./components/primitives.tsx";
 import { explainLine } from "./lib/explain.ts";
 import { clock } from "./lib/format.ts";
@@ -22,8 +24,26 @@ import { buildWorkbench, type Workbench } from "./lib/workbench.ts";
 const MAX_LOG_LINES = 80;
 const BALANCE_POLL_MS = 10_000;
 
+// The view comes from the location hash: "#docs" or "#docs/<section>" shows the docs; any other
+// hash shows the app. The browser back button returns to the app.
+function useDocsSection(): string | null {
+  const [section, setSection] = useState<string | null>(() => sectionOfHash(window.location.hash));
+  useEffect(() => {
+    const onHash = (): void => {
+      const next = sectionOfHash(window.location.hash);
+      setSection(next);
+      if (next !== null && next !== "") document.getElementById(`docs-${next}`)?.scrollIntoView();
+      if (next === "") window.scrollTo(0, 0);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  return section;
+}
+
 export function App() {
   const now = useNow(250);
+  const docsSection = useDocsSection();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [passphrase, setPassphrase] = useState("");
   const [workbench, setWorkbench] = useState<Workbench | null>(null);
@@ -163,7 +183,8 @@ export function App() {
         balance={balance}
         onDisconnectSigner={() => setSigner(null)}
       />
-      {walletOpen && workbench !== null ? (
+      {docsSection === null ? null : <Docs activeSection={docsSection} />}
+      {docsSection === null && walletOpen && workbench !== null ? (
         <WalletModal
           workbench={workbench}
           onConnected={(next) => {
@@ -173,6 +194,7 @@ export function App() {
           onClose={() => setWalletOpen(false)}
         />
       ) : null}
+      <div className={docsSection === null ? "" : "hidden"}>
       <p className="intro">
         <strong>Prepaid RPC without an identity.</strong> Buy 100 units with a wallet. Prove in this browser that you hold one unspent batch,
         without saying which. Open a session at the gateway through the Nox mixnet. Spend with signed requests. The gateway never learns who
@@ -231,10 +253,13 @@ export function App() {
           </p>
         </details>
       )}
+      </div>
       <footer className="foot">
         <span>
           anon-credit · {workbench === null ? "" : <>gateway id <Hex value={workbench.client.deployment.gateway_id} /> · </>}
         </span>
+        <a href="#docs">docs</a>
+        {" · "}
         <button type="button" className="quiet" onClick={() => setLight((value) => !value)}>
           {light ? "dark" : "light"} mode
         </button>

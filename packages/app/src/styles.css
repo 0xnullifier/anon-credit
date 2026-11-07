@@ -806,3 +806,159 @@ details summary {
 .top .signer {
   white-space: nowrap;
 }
+
+/* Docs view */
+
+.hidden {
+  display: none;
+}
+
+.docs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  padding-top: 20px;
+}
+
+@media (min-width: 900px) {
+  .docs {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .doc-index {
+    position: sticky;
+    top: 60px;
+    align-self: start;
+    max-height: calc(100vh - 80px);
+    overflow: auto;
+  }
+}
+
+.doc-index ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.doc-index li {
+  padding: 2px 0;
+}
+
+.doc-index li a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.doc-index li.active a,
+.doc-index li a:hover {
+  color: var(--text);
+}
+
+.doc-index .n,
+.doc-section h2 .n {
+  color: var(--dim);
+  display: inline-block;
+  min-width: 2.5ch;
+}
+
+.doc-index-title {
+  margin: 0 0 10px;
+}
+
+.doc-body {
+  min-width: 0;
+  max-width: 78ch;
+}
+
+.doc-head h1 {
+  font-size: var(--fs);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.doc-head h1::before {
+  content: "$ ";
+  color: var(--muted);
+}
+
+.doc-head p {
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.doc-section {
+  border-top: 1px solid var(--line);
+  padding: 16px 0 20px;
+}
+
+.doc-section h2 {
+  font-size: var(--fs);
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.doc-section h2 a {
+  text-decoration: none;
+}
+
+.doc-section p {
+  margin: 8px 0;
+}
+
+.doc-section pre {
+  max-height: none;
+}
+
+.doc-figure {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  margin: 8px 0;
+}
+
+.doc-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0 12px;
+}
+
+.doc-table th,
+.doc-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 4px 10px 4px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.doc-table th {
+  color: var(--muted);
+  font-weight: 400;
+  border-top: none;
+}
+
+.doc-table td:last-child,
+.doc-table th:last-child {
+  padding-right: 0;
+}
+
+.doc-source {
+  color: var(--dim);
+  margin: 6px 0 0;
+}
+
+.top .docs-link {
+  text-decoration: none;
+  color: var(--muted);
+}
+
+.top .docs-link::before {
+  content: "[";
+  color: var(--dim);
+}
+
+.top .docs-link::after {
+  content: "]";
+  color: var(--dim);
+}
