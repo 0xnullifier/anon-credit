@@ -30,9 +30,11 @@ pub const DEFAULT_CORS_ORIGINS: &str = "http://localhost:5173,http://localhost:5
 /// Source of accepted roots (`GATEWAY_ROOT_SOURCE`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RootSourceKind {
-    /// `contract` (default): `RootRegistry` at the `finalized` block tag.
+    /// `contract` (default): `RootRegistry` at the block tag of `BLOCK_TAG` (default
+    /// `finalized`).
     Contract,
-    /// `issuer-http`: the issuer `GET /v1/roots`, only `finalized` records. Local runs only.
+    /// `issuer-http`: the issuer `GET /v1/roots`, only `finalized` records (also `included`
+    /// with `BLOCK_TAG=latest`). Local runs only.
     IssuerHttp,
 }
 

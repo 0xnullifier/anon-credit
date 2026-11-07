@@ -171,6 +171,7 @@ fn root_source(
             Ok(Arc::new(RegistryRootSource::new(
                 parse_url("GATEWAY_ROOT_RPC_URL", root_url)?,
                 deployment.root_registry_address,
+                settings.common.block_tag,
             )))
         }
         RootSourceKind::IssuerHttp => {
@@ -185,7 +186,8 @@ fn root_source(
                 parse_url("GATEWAY_ROOT_ISSUER_URL", issuer_url)?,
                 ISSUER_ROOTS_TIMEOUT,
             )
-            .map_err(|e| anyhow!("{e}"))?;
+            .map_err(|e| anyhow!("{e}"))?
+            .with_block_tag(settings.common.block_tag);
             Ok(Arc::new(source))
         }
     }

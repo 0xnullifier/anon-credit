@@ -4,10 +4,14 @@
 //! one of them:
 //!
 //! - `contract` (default): [`RegistryRootSource`] reads the `RootRegistry` contract at the
-//!   `finalized` block tag. It does not trust the issuer HTTP API. Use it for the testnet run.
+//!   block tag of `BLOCK_TAG` (default `finalized`). It does not trust the issuer HTTP API.
+//!   Use it for the testnet run.
 //! - `issuer-http`: [`IssuerHttpRootSource`] reads `GET /v1/roots` of the issuer and accepts only
-//!   records with the status `finalized`. It trusts the issuer. Use it only for a local
-//!   integration run.
+//!   records with the status `finalized` (with `BLOCK_TAG=latest`, also `included`). It trusts
+//!   the issuer. Use it only for a local integration run.
+//!
+//! `BLOCK_TAG=latest` trades reorg safety for speed: a reorganization can remove a root that
+//! the gateway already accepted. Use it only on a testnet.
 //!
 //! Tests use a fake source.
 //!
@@ -16,13 +20,14 @@
 //! publication does not make a newer root valid for an earlier epoch.
 
 use crate::epoch::{ROOT_WINDOW_EPOCHS, root_in_window, window_start};
-use alloy::eips::BlockId;
+use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::primitives::Address as EvmAddress;
 use alloy::providers::{DynProvider, Provider, ProviderBuilder};
 use anon_credit_crypto::FieldElement;
 use anon_credit_protocol::admin::RootStatus;
 use anon_credit_protocol::api::AcceptedRoot;
 use anon_credit_protocol::issuer_api::{IssuerRootsResponse, PublicationStatus};
+use anon_credit_protocol::settings::BlockTag;
 use anon_credit_protocol::{Address, Bytes32, DecimalU64};
 use async_trait::async_trait;
 use std::collections::{BTreeMap, BTreeSet};
@@ -63,18 +68,26 @@ pub trait RootSource: Send + Sync + 'static {
     async fn root_at(&self, epoch: u64) -> Result<Option<PublishedRoot>, RootSourceError>;
 }
 
-/// `RootRegistry` contract reader. All reads use the `finalized` block tag.
+/// `RootRegistry` contract reader. All reads use one block tag (`BLOCK_TAG`).
 #[derive(Clone)]
 pub struct RegistryRootSource {
     registry: RootRegistry::RootRegistryInstance<DynProvider>,
+    block: BlockId,
 }
 
 impl RegistryRootSource {
-    /// Make a reader for the contract at `address` through the RPC at `url`.
-    pub fn new(url: reqwest::Url, address: Address) -> Self {
+    /// Make a reader for the contract at `address` through the RPC at `url`. The reads use
+    /// `block_tag`.
+    pub fn new(url: reqwest::Url, address: Address, block_tag: BlockTag) -> Self {
         let provider = ProviderBuilder::new().connect_http(url).erased();
+        let tag = match block_tag {
+            BlockTag::Finalized => BlockNumberOrTag::Finalized,
+            BlockTag::Safe => BlockNumberOrTag::Safe,
+            BlockTag::Latest => BlockNumberOrTag::Latest,
+        };
         Self {
             registry: RootRegistry::new(EvmAddress::from(address.0), provider),
+            block: BlockId::Number(tag),
         }
     }
 }
@@ -94,7 +107,7 @@ impl RootSource for RegistryRootSource {
     async fn latest_epoch(&self) -> Result<u64, RootSourceError> {
         self.registry
             .latestEpoch()
-            .block(BlockId::finalized())
+            .block(self.block)
             .call()
             .await
             .map_err(|e| contract_error(&e))
@@ -104,7 +117,7 @@ impl RootSource for RegistryRootSource {
         let record = self
             .registry
             .rootAt(epoch)
-            .block(BlockId::finalized())
+            .block(self.block)
             .call()
             .await
             .map_err(|e| contract_error(&e))?;
@@ -122,7 +135,7 @@ impl RootSource for RegistryRootSource {
 /// Largest number of records in one `GET /v1/roots` page of the issuer.
 const ISSUER_ROOT_PAGE: u32 = 1000;
 
-/// Finalized records of the last issuer response.
+/// Accepted records of the last issuer response.
 #[derive(Debug, Default)]
 struct IssuerRootCache {
     // Lowest epoch of the last list. Below it the cache has no information.
@@ -131,6 +144,8 @@ struct IssuerRootCache {
 }
 
 /// Issuer HTTP reader (FUTURE.md C7). It accepts only records with the status `finalized`.
+/// With `BLOCK_TAG=latest` ([`IssuerHttpRootSource::with_block_tag`]), it also accepts records
+/// with the status `included`.
 ///
 /// This source trusts the issuer for the root values. The contract source does not. Use it only
 /// for the local integration run.
@@ -138,6 +153,7 @@ struct IssuerRootCache {
 pub struct IssuerHttpRootSource {
     client: reqwest::Client,
     base: reqwest::Url,
+    block_tag: BlockTag,
     cache: Mutex<IssuerRootCache>,
 }
 
@@ -151,8 +167,15 @@ impl IssuerHttpRootSource {
         Ok(Self {
             client,
             base,
+            block_tag: BlockTag::Finalized,
             cache: Mutex::new(IssuerRootCache::default()),
         })
+    }
+
+    /// Use `block_tag` (`BLOCK_TAG`) to select the accepted records. Default: `finalized`.
+    pub fn with_block_tag(mut self, block_tag: BlockTag) -> Self {
+        self.block_tag = block_tag;
+        self
     }
 
     fn cache(&self) -> std::sync::MutexGuard<'_, IssuerRootCache> {
@@ -189,23 +212,37 @@ impl IssuerHttpRootSource {
             .map_err(|_| RootSourceError("issuer roots response is not valid".to_owned()))
     }
 
-    /// Replace the cache with the finalized records of `response`. `from` is the first epoch
+    /// Replace the cache with the accepted records of `response`. `from` is the first epoch
     /// that the request asked for. A response has all records from that epoch, up to the page
     /// size. The default page starts at its lowest record.
     fn remember(&self, response: &IssuerRootsResponse, from: Option<u64>) {
         let mut cache = self.cache();
         cache.first_epoch =
             from.or_else(|| response.roots.iter().map(|record| record.epoch.0).min());
-        cache.finalized = finalized_records(response);
+        cache.finalized = accepted_records(response, self.block_tag);
     }
 }
 
-/// The records of a response with the status `finalized`, by epoch.
-fn finalized_records(response: &IssuerRootsResponse) -> BTreeMap<u64, PublishedRoot> {
+/// Tell if the gateway accepts an issuer record with `status` at `block_tag`. The issuer gives
+/// the status `finalized` at its own `BLOCK_TAG`. With `latest`, a mined (`included`) record
+/// is enough.
+fn accepts_status(status: PublicationStatus, block_tag: BlockTag) -> bool {
+    match (status, block_tag) {
+        (PublicationStatus::Finalized, _) => true,
+        (PublicationStatus::Included, BlockTag::Latest) => true,
+        _ => false,
+    }
+}
+
+/// The accepted records of a response ([`accepts_status`]), by epoch.
+fn accepted_records(
+    response: &IssuerRootsResponse,
+    block_tag: BlockTag,
+) -> BTreeMap<u64, PublishedRoot> {
     response
         .roots
         .iter()
-        .filter(|record| record.status == PublicationStatus::Finalized)
+        .filter(|record| accepts_status(record.status, block_tag))
         .map(|record| {
             (
                 record.epoch.0,
@@ -238,7 +275,7 @@ impl RootSource for IssuerHttpRootSource {
             if let Some(published) = cache.finalized.get(&epoch) {
                 return Ok(Some(*published));
             }
-            // The last list has this epoch, and the record is not finalized.
+            // The last list has this epoch, and the record is not accepted.
             if cache.first_epoch.is_some_and(|first| epoch >= first) {
                 return Ok(None);
             }

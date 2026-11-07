@@ -414,6 +414,31 @@ async fn issuer_http_source_accepts_only_finalized_records() {
 }
 
 #[tokio::test]
+async fn issuer_http_source_at_the_latest_tag_also_accepts_included_records() {
+    use anon_credit_gateway::roots::IssuerHttpRootSource;
+    use anon_credit_protocol::settings::BlockTag;
+    let records = vec![
+        issuer_record(10, 3, 100, "finalized"),
+        issuer_record(11, 4, 101, "included"),
+        issuer_record(12, 5, 102, "submitted"),
+    ];
+    let addr = fake_issuer(records, Arc::default()).await;
+    let base = reqwest::Url::parse(&format!("http://{addr}")).unwrap();
+    let latest = IssuerHttpRootSource::new(base.clone(), Duration::from_secs(5))
+        .unwrap()
+        .with_block_tag(BlockTag::Latest);
+    assert_eq!(latest.latest_epoch().await.unwrap(), 11);
+    assert_eq!(latest.root_at(11).await.unwrap().unwrap().leaf_count, 4);
+    assert_eq!(latest.root_at(12).await.unwrap(), None);
+    // The safe tag keeps the issuer status rule: only finalized records.
+    let safe = IssuerHttpRootSource::new(base, Duration::from_secs(5))
+        .unwrap()
+        .with_block_tag(BlockTag::Safe);
+    assert_eq!(safe.latest_epoch().await.unwrap(), 10);
+    assert_eq!(safe.root_at(11).await.unwrap(), None);
+}
+
+#[tokio::test]
 async fn issuer_http_source_reports_bad_responses_without_the_url() {
     use anon_credit_gateway::roots::IssuerHttpRootSource;
     let app = Router::new().route(

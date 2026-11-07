@@ -17,7 +17,7 @@ Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not dele
 | 1. Proof feasibility | Pin ProveKit and Noir, batch-open circuit, hash encodings, artifacts | Done (1A gate, 1B statement, 1C real circuit in Chromium, verifier sidecar) |
 | 2. Credit issuance | Sepolia contracts, issuer indexing, MMR snapshots, root publication | Done in code and tests; Sepolia deployment and a real finalized payment are open (the user deploys) |
 | 3. Gateway | Open, spend, receipts, status recovery, pricing, limits | Done in code and tests; a live run needs the deployed contracts, the sidecar, and an upstream RPC |
-| 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Done in code and tests; the local integration harness passes 15 of 15 steps (anvil, direct transport). Nox refuses request bodies above about 48 KB, so the open sends the proof in 24 KiB chunks first (phase 6A, "Chunked open upload"); 13 chunks pass through the live Nox network. The Sepolia run through Nox is open: it needs the deployment and public HTTPS services |
+| 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Done in code and tests; the local integration harness passes 15 of 15 steps (anvil, direct transport). Nox refuses request bodies above about 48 KB, so the open sends the proof first in raw 40,000-byte chunks, 8 at the same time (phase 6A, "Chunked open upload"); the 8 chunks of a real proof pass through the live Nox network in 4 to 7 s. The Sepolia run through Nox is open: it needs the deployment and public HTTPS services |
 | 5. Dashboard | Admin snapshots, event stream, session views, demo IP attribution | Done in code and tests against the mock admin server and the shared schemas; a live run needs a running gateway |
 | 6. Complete demo | Script and dashboard on the same paid flow through Nox | In code and tests: admin snapshot gaps closed, dashboard demo comparison and session timeline, deployment helper and service launcher (tested on anvil), runbook ([RUNBOOK.md](RUNBOOK.md)). The live Sepolia run through Nox is open: it needs the user's deployment and public HTTPS services |
 | 7. Measurement | Proving, resource, and gateway benchmarks | Not started |
@@ -535,7 +535,7 @@ The shared and the older gateway variables are in the Configuration table. Phase
 | `GET /v1/config` | | IDs, circuit ID, verifier hash, chains, epoch, windows, price table hash, limits |
 | `GET /v1/prices` | | `{price_table_hash, price_table}`; check the hash with the canonical encoding |
 | `GET /v1/roots` | | Accepted roots of the last 96 source epochs, newest first |
-| `PUT /v1/open/chunks` | `OpenChunkRequest` (at most 40,000 bytes) | `{received_chunks, complete}`; see "Chunked open upload" |
+| `PUT /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}` | Raw chunk bytes, `application/octet-stream` (at most 40,000 bytes) | `{received_chunks, complete}`; see "Chunked open upload" |
 | `POST /v1/open` | `OpenRequest` with `proof` or `proof_upload` | `{session, existing}` |
 | `POST /v1/rpc` | `SpendRequest` | Raw JSON-RPC bytes; headers `X-Anon-Remaining`, `X-Anon-Next-Seq`, `X-Anon-Replayed` |
 | `POST /v1/session/status` | `StatusRequest` | `{session, current_epoch, latest_receipt, nonce}` |
@@ -624,16 +624,19 @@ do not change. Code: `crates/gateway/src/upload.rs`, `packages/sdk/src/upload.ts
 Proof encoding: the ProveKit WASM at the pinned commit emits only the JSON proof
 (`proveBytes`, about 477 KB). It cannot emit the binary `.np` proof (about 306 KB) without a
 change of the WASM, and thus of the pinned prover manifest. Thus the browser compresses the JSON
-proof with gzip (`CompressionStream`): about 318 KB, 13 chunks. The gateway decompresses
+proof with gzip (`CompressionStream`): about 318 KB, 8 chunks. The gateway decompresses
 `json+gzip` with the upload size limit (4 MiB) before it calls the sidecar. `np` and `json`
 bytes go to the sidecar as they are.
 
-Wire format (all envelopes reject unknown fields; IDs and digests are lowercase hex; `data` is
-canonical base64):
+Wire format (all JSON envelopes reject unknown fields; IDs and digests are lowercase hex). A
+chunk has no JSON and no base64: the body is the raw chunk bytes, and the path has the metadata.
+The path has no secret: the batch ID and the digest are public to the gateway. The path does not
+depend on custom headers, so no proxy or worker can remove the metadata.
 
 ```text
-PUT /v1/open/chunks
-  {batch_id, proof_sha256, total_bytes, chunk_index, chunk_count, data}
+PUT /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}
+  content-type: application/octet-stream
+  <1 to 40,000 raw bytes>
   -> 200 {received_chunks, complete}
 
 POST /v1/open
@@ -644,9 +647,13 @@ POST /v1/open
 ```
 
 - `proof_sha256` and `total_bytes` describe the uploaded bytes (after gzip). The gateway keys an
-  upload by `(batch_id, proof_sha256)`. `data` has 1 to 24,576 bytes. The largest chunk envelope
-  is about 33,000 bytes; the route body limit is 40,000 bytes (HTTP 413 above it). Tests in Rust
-  and TypeScript check that a chunk with the largest values stays below the limit.
+  upload by `(batch_id, proof_sha256)`. The body has 1 to 40,000 bytes; the route body limit is
+  40,000 bytes (HTTP 413 above it). The path is at most 190 bytes, so a request with headers stays
+  far below the Nox limit of about 48,000 bytes. `batch_id` and `proof_sha256` are `0x` and 64
+  lowercase hex digits; the three numbers are decimal `u32` values without a sign or a leading
+  zero. A path that breaks these rules is `invalid_request`. `OpenChunkPath` (Rust) and
+  `openChunkPath`/`parseOpenChunkPath` (TypeScript) render and read the path; the shared fixture
+  `open_chunk_paths` has valid and invalid paths for both.
 - Chunks can arrive in any order. A duplicate chunk with the same bytes has no effect (also after
   completion). A duplicate with different bytes, a different `total_bytes` or `chunk_count`, a
   wrong index, or more bytes than `total_bytes` is `invalid_request`.
@@ -656,8 +663,8 @@ POST /v1/open
   Each open request with `proof_upload` deletes its upload: on success, on `proof_invalid`, and
   on every other rejection. A missing, expired, or incomplete upload is `invalid_request`. An
   exact retry of an open that succeeded does not need the upload (the session exists).
-- Limits (published in `GET /v1/config` `limits.open_upload_*`): upload 4 MiB, 24 KiB per chunk,
-  40,000-byte chunk body, 256 chunks, TTL 10 minutes, 1,000 pending uploads, 512 MiB pending.
+- Limits (published in `GET /v1/config` `limits.open_upload_*`): upload 4 MiB, 40,000 bytes per
+  chunk (`open_upload_chunk_bytes`, the SDK plans with it), 40,000-byte chunk body, 256 chunks, TTL 10 minutes, 1,000 pending uploads, 512 MiB pending.
   The gateway reserves the declared `total_bytes` at the first chunk. A full store gives `busy`
   (retryable); a size or shape violation gives `invalid_request`. The 5 s pruning task deletes
   expired uploads. Uploads stay in memory; a restart deletes them. No new events.
@@ -667,13 +674,16 @@ POST /v1/open
   for up to 10 minutes.
 
 SDK: `submitOpen` uses the chunked upload when the transport is the Anon-RPC transport, or when
-the inline request is larger than `transport.maxBodyBytes` (Nox 40,000, direct `Infinity`).
+the inline request is larger than `transport.maxBodyBytes` (Nox 40,000, direct `Infinity`). The chunk
+size is the smallest of `limits.open_upload_chunk_bytes`, `limits.open_upload_chunk_body_bytes`,
+40,000, and `transport.maxBodyBytes` (`uploadChunkBytes`).
 `openUpload: "chunked"` (client option or per call) forces it, `"inline"` turns it off. It sends
-the chunks on the isolation key of the batch, 4 at the same time with one attempt each; failed
+the chunks on the isolation key of the batch, 8 at the same time with one attempt each; failed
 chunks then go one at a time with up to 3 attempts of the same bytes (500 ms apart), and later
 uploads of the client use one chunk at a time. Then it sends `POST /v1/open` with `proof_upload`.
 A retry of `submitOpen` sends the chunks again. `submitOpen` returns `{response, upload}`;
-`upload` has the encoding, sizes, chunk count, concurrency, fallback flag, sends, and times.
+`upload` has the encoding, sizes, chunk count, concurrency, fallback flag, sends, and times. The
+policy is configurable: `uploadPolicy: { parallel, attempts, delayMs }` (default 8, 3, 500 ms).
 
 ### Admin API (`127.0.0.1:8082`, `Authorization: Bearer <GATEWAY_ADMIN_TOKEN>`)
 
@@ -708,7 +718,8 @@ one sequence, the lock wait, the session deadline and pruning, the admin token, 
 forwarding headers, no IP in events or logs in the normal profile, the sidecar and upstream
 clients, and the public-input fixtures. `tests/upload.rs` and `src/upload.rs` cover the chunked
 upload: any chunk order, idempotent and conflicting duplicates, SHA-256 and length mismatch,
-the body, size, chunk, pending-count, and pending-byte limits, TTL eviction with the injected
+the body, size, chunk, pending-count, and pending-byte limits, paths that are not canonical, a
+40,000-byte body, TTL eviction with the injected
 clock, open with `json` and `json+gzip` uploads, deletion after success and after each failure
 (`proof_invalid`, bad signature, bad gzip, incomplete upload), the published limits, and CORS
 for `PUT`.
@@ -762,7 +773,7 @@ const backup = await client.exportBackup();               // "acb1." + base64(pa
 ```
 
 Other exports: `prepareOpen`/`submitOpen` (split open, used by the step list; `submitOpen(batchId,
-request, { upload })` returns `{response, upload}`), `planUpload`/`encodeProof`/`sendChunks` (chunked
+request, { upload })` returns `{response, upload}`), `planUpload`/`encodeProof`/`sendChunks`/`uploadChunkBytes` (chunked
 proof upload), `client.status(batchId)`
 (signed status; also for a batch without a session), `session.resume({ retryAsNew })`,
 `session.buildRequest`/`sendRaw` (diagnostic probes without a state change), `importBackup`,
@@ -832,24 +843,37 @@ Consequence: spend and status requests (about 1 KB) pass through Nox. An inline 
 `NOX_MEASURED_MAX_BODY_BYTES` (48,000) records the measured value; `NOX_MAX_REQUEST_BODY_BYTES`
 (40,000) is the transport `maxBodyBytes` that the SDK uses.
 
-Chunk probe: `node examples/e2e/nox-probe.ts --chunks` gzips the real browser proof
-(`artifacts/batch-open/proof.browser.json`, 477,325 bytes -> 318,335 bytes), makes the 13 chunk
-envelopes with the SDK planner in the page (largest 32,998 bytes), and sends them through Nox on one
-isolation key to `https://httpbin.org/anything` with `PUT`: first 4 in flight, then a second run with
-1 in flight. The echo has the chunk data unchanged for every delivered chunk. Results
-(`examples/e2e/results/nox-chunk-probe.json`, headless Chromium 149, 2026-11-07, two probe runs):
+Chunk probe: `NOX_BOOTSTRAP_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com node
+examples/e2e/nox-probe.ts --chunks` gzips the real browser proof
+(`artifacts/batch-open/proof.browser.json`, 477,325 bytes -> 318,335 bytes), plans the 8 raw chunks
+with the SDK planner in the page (7 of 40,000 bytes and 1 of 38,335 bytes; URL at most 190 bytes),
+and sends each one as an `application/octet-stream` `PUT` through Nox on one isolation key to
+`https://httpbingo.org/anything` + the chunk path. `NOX_PROBE_PARALLEL` sets the runs (default 8, 4,
+1 in flight). The echo has the chunk bytes unchanged for every delivered chunk. httpbin.org is not
+the default any more: it answers 429 to 8 requests at the same time (also without Nox). Results
+(`examples/e2e/results/nox-chunk-probe.json`, headless Chromium 149, 2026-11-07, two probe runs, each
+with its own Nox worker):
 
-| Run | Nox ready | 13 chunks, 4 in flight | Per chunk, 4 in flight (min / median / max) | 13 chunks, 1 at a time | Per chunk, 1 at a time (min / median / max) |
-|---|---:|---:|---:|---:|---:|
-| 1 | 4.4 s | 38.4 s, no failure | 7.2 / 11.0 / 15.6 s | 50.2 s, 1 failure (`TunnelRejectedError ... UpstreamClosed`), sent again with success | 2.6 / 3.3 / 6.7 s |
-| 2 | 5.2 s | 19.4 s, no failure | 3.0 / 5.4 / 8.0 s | 30.9 s, no failure | 1.7 / 2.3 / 3.9 s |
-| Direct (no Nox), for comparison | | 8.1 s, 1 failure at httpbin | 0.8 / 1.7 / 3.9 s | 22.7 s | 0.8 / 1.1 / 6.8 s |
+| In flight | Runs | Chunks delivered in the first pass | 8 chunks (total) | Per chunk (min / median / max) |
+|---:|---:|---:|---:|---:|
+| 8 | 9 | 72 of 72 (100 %), no fallback, no retry | 4.4 / 5.7 / 6.6 s (min / median / max) | 2.2 / 4.4 / 6.6 s |
+| 4 | 1 | 8 of 8 | 6.4 s | 2.0 / 2.8 / 3.4 s |
+| 1 | 1 | 8 of 8 | 19.7 s | 1.9 / 2.4 / 4.5 s |
+| 8, direct (no Nox), for comparison | 1 | 8 of 8 | 2.5 s | 2.1 / 2.5 / 2.5 s |
 
-Findings: parallel chunks on one isolation key work through Nox. Each request is slower with 4 in
-flight (the exit path seems to serialize part of the work), but the total is 25 to 40 % shorter than
-one at a time. A single chunk takes 2 to 3 s through Nox, more than the expected 1 to 2 s. Nox
-sometimes closes a tunnel (`UpstreamClosed`); the SDK retry of the same bytes handles it. Expect
-20 to 40 s for the proof upload of one open through Nox, plus the open request itself.
+Nox was ready after 79 s in both probe runs (the worker waited about 75 s before its boot snapshot);
+earlier probes had 4 to 5 s. The SDK ready timeout of 120 s covers both.
+
+Findings: Nox does not throttle 8 requests of about 40 KB in flight on one isolation key: every
+chunk passed in the first pass. Each request is slower with more in flight (the worker log shows
+the TLS exchange of each call at 2 to 5 s), but the total for one proof falls from 19.7 s (1 at a
+time) and 6.4 s (4) to about 5 to 6 s (8, one round). A proof of 8 chunks cannot use more than 8 in
+flight, so the SDK default is 8. Expect about 5 to 7 s for the proof upload of one open through Nox,
+plus the open request itself.
+
+Earlier format (24 KiB of data as base64 in a JSON envelope of about 33,000 bytes, 13 chunks,
+httpbin.org): 19.4 to 38.4 s with 4 in flight and 30.9 to 50.2 s with 1 at a time, with one
+`TunnelRejectedError ... UpstreamClosed` that the retry of the same bytes handled.
 
 ### Local integration harness
 
@@ -880,9 +904,10 @@ pass. Remaining 100 -> 99 -> 98 -> 96, next_seq 1, 2, 3; the replay returns the 
 one read); a modified proof gives `proof_invalid` and no session row (`not_found`), then the valid
 open gives 100; the admin view matches (0, 99, 100). Proof: 475 KB, 228 ms (witness 45 ms).
 
-Run with the chunked upload (2026-11-07): 15 of 15 steps pass. Step 8: proof 478,817 bytes JSON,
-318,537 bytes gzip, 13 chunks, 4 in flight, no fallback, upload 16 ms, open 142 ms in total (local
-gateway). Step 13: inline open, 84 ms.
+Run with the raw 40,000-byte chunks (2026-11-07): 15 of 15 steps pass, 22 s in total. Step 8: proof
+475,489 bytes JSON, 315,354 bytes gzip, 8 chunks, 8 in flight, no fallback, 8 sends, upload 14 ms,
+open 133 ms in total (local gateway). Step 13: inline open, 87 ms. Earlier run with the JSON
+envelopes: 13 chunks, 4 in flight, upload 16 ms, open 142 ms.
 
 ### Sepolia example
 
@@ -898,7 +923,7 @@ with the Nox transport, a real purchase from the test payer, finality progress l
 first-use delay, a two-hour default timeout, and a sanitized result
 (`examples/e2e/results/sepolia-result.json`, no keys, passphrase, token, or RPC URL). It exits nonzero on
 a failed step or on the timeout. It has not run: no deployment exists. Step 8 and the other opens
-send the proof in chunks through Nox (about 20 to 40 s each, see the chunk probe).
+send the proof in 8 raw chunks through Nox (about 5 to 7 s each, see the chunk probe).
 
 | Variable | Use |
 |---|---|
@@ -929,10 +954,10 @@ the `finalized` tag. Tests: `cargo test -p anon-credit-gateway --test adapters i
 
 ```sh
 pnpm --filter @anon-credit/sdk test             # 37: vectors, gate witness, open, chunked upload, spend, retries, expiry, journal, isolation, storage, backup
-pnpm --filter @anon-credit/anon-transport test  # 7: harness lifecycle with a fake worker, error codes, no fallback, PUT, maxBodyBytes
+pnpm --filter @anon-credit/anon-transport test  # 7: harness lifecycle with a fake worker, error codes, no fallback, PUT with a raw byte body, maxBodyBytes
 pnpm --filter @anon-credit/example-e2e test     # 6: Sepolia dry run with fakes, URL policy
 node examples/e2e/nox-probe.ts                  # live Nox probe (internet access)
-node examples/e2e/nox-probe.ts --chunks         # live Nox chunked upload probe (--direct: without Nox)
+node examples/e2e/nox-probe.ts --chunks         # live Nox chunked upload probe (--direct: without Nox; NOX_PROBE_PARALLEL=8,4,1)
 ```
 
 New dependency versions: viem 2.57.11 (SDK runner side and the example), fake-indexeddb 6.2.6 (SDK
