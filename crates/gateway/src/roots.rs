@@ -227,11 +227,10 @@ impl IssuerHttpRootSource {
 /// the status `finalized` at its own `BLOCK_TAG`. With `latest`, a mined (`included`) record
 /// is enough.
 fn accepts_status(status: PublicationStatus, block_tag: BlockTag) -> bool {
-    match (status, block_tag) {
-        (PublicationStatus::Finalized, _) => true,
-        (PublicationStatus::Included, BlockTag::Latest) => true,
-        _ => false,
-    }
+    matches!(
+        (status, block_tag),
+        (PublicationStatus::Finalized, _) | (PublicationStatus::Included, BlockTag::Latest)
+    )
 }
 
 /// The accepted records of a response ([`accepts_status`]), by epoch.
