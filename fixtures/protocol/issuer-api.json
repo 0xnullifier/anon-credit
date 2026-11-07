@@ -309,6 +309,7 @@
       "type": "config_response",
       "value": {
         "batch_price_wei": "0100000000000000",
+        "block_tag": "finalized",
         "deployment": {
           "batch_size": 100,
           "circuit_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
@@ -333,6 +334,7 @@
       "type": "config_response",
       "value": {
         "batch_price_wei": "100000000000000",
+        "block_tag": "finalized",
         "deployment": {
           "batch_size": 100,
           "circuit_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
@@ -341,6 +343,31 @@
           "gateway_id": "0x6161616161616161616161616161616161616161616161616161616161616161",
           "issuer_address": "0x1515151515151515151515151515151515151515",
           "payment_chain_id": "11155111",
+          "protocol_version": 1,
+          "prover_manifest_hash": "0x0303030303030303030303030303030303030303030303030303030303030303",
+          "root_registry_address": "0x7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e",
+          "sale_address": "0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+          "verifier_artifact_hash": "0x0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        "deployment_id": "0x5dd3e216f06bb3cfe7bdbd0265ae10c8da3fc7dfd0c1773fbff9f98950db8368",
+        "max_batches_per_purchase": 100,
+        "root_window_epochs": 96
+      }
+    },
+    {
+      "name": "block_tag_unknown",
+      "type": "config_response",
+      "value": {
+        "batch_price_wei": "100000000000000",
+        "block_tag": "pending",
+        "deployment": {
+          "batch_size": 100,
+          "circuit_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "credit_lifetime_epochs": 35040,
+          "epoch_seconds": 30,
+          "gateway_id": "0x6161616161616161616161616161616161616161616161616161616161616161",
+          "issuer_address": "0x1515151515151515151515151515151515151515",
+          "payment_chain_id": 11155111,
           "protocol_version": 1,
           "prover_manifest_hash": "0x0303030303030303030303030303030303030303030303030303030303030303",
           "root_registry_address": "0x7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e",
@@ -446,6 +473,7 @@
   "valid": {
     "config_response": {
       "batch_price_wei": "100000000000000",
+      "block_tag": "finalized",
       "deployment": {
         "batch_size": 100,
         "circuit_id": "0x0101010101010101010101010101010101010101010101010101010101010101",

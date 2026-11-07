@@ -58,6 +58,11 @@ export const deploymentConfigTextSchema = z.strictObject({
   prover_manifest_hash: hex32TextSchema,
 });
 
+// Block tag at which the services read the chain (BLOCK_TAG). Production: "finalized".
+// "latest" trades reorg safety for speed: testnet only.
+export const blockTagSchema = z.enum(["finalized", "safe", "latest"]);
+export type BlockTag = z.output<typeof blockTagSchema>;
+
 // GET /v1/config response body.
 export const issuerConfigResponseSchema = z.strictObject({
   deployment: deploymentConfigTextSchema,
@@ -65,6 +70,8 @@ export const issuerConfigResponseSchema = z.strictObject({
   batch_price_wei: decimalU64TextSchema,
   max_batches_per_purchase: u32Schema,
   root_window_epochs: u32Schema,
+  // A payment or a root publication at or below the block of this tag counts as final.
+  block_tag: blockTagSchema,
 });
 export type IssuerConfigResponse = z.output<typeof issuerConfigResponseSchema>;
 

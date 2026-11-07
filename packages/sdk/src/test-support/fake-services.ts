@@ -356,6 +356,7 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
           batch_price_wei: "100000000000000",
           max_batches_per_purchase: 100,
           root_window_epochs: 96,
+          block_tag: "finalized",
         });
       case path === "/v1/roots":
         return json(200, {

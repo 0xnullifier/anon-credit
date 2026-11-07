@@ -42,7 +42,7 @@ function fakeFetch(seen: string[]): typeof fetch {
     seen.push(`${url.origin}${url.pathname}`);
     switch (`${url.origin}${url.pathname}`) {
       case "https://issuer.example.org/v1/config":
-        return json({ deployment: deploymentText, deployment_id: DEPLOYMENT_ID, batch_price_wei: "100000000000000", max_batches_per_purchase: 100, root_window_epochs: 96 });
+        return json({ deployment: deploymentText, deployment_id: DEPLOYMENT_ID, batch_price_wei: "100000000000000", max_batches_per_purchase: 100, root_window_epochs: 96, block_tag: "latest" });
       case "https://gateway.example.org/v1/config":
         return json({
           protocol_version: 1,

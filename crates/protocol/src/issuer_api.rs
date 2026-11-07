@@ -15,6 +15,7 @@
 
 use crate::deployment::DeploymentConfig;
 use crate::hex_bytes::{Address, Bytes32};
+use crate::settings::BlockTag;
 use crate::wire::DecimalU64;
 use anon_credit_crypto::FieldElement;
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,10 @@ pub struct IssuerConfigResponse {
     pub max_batches_per_purchase: u32,
     /// Number of source epochs for which the gateway accepts a root.
     pub root_window_epochs: u32,
+    /// Block tag of the sale indexer and the root publisher (`BLOCK_TAG`). A payment or a
+    /// root publication at or below the block of this tag counts as final. Production:
+    /// `finalized`. `latest` is for a testnet only.
+    pub block_tag: BlockTag,
 }
 
 /// `POST /v1/topups` request body. It asks the issuer to track one `Purchased` log.

@@ -264,6 +264,11 @@ fn invalid_examples(valid: &Map<String, Value>) -> Vec<Value> {
             ),
         ),
         (
+            "block_tag_unknown",
+            "config_response",
+            with(&get("config_response"), "/block_tag", json!("pending")),
+        ),
+        (
             "epoch_as_number",
             "epoch_response",
             with(&get("epoch_response"), "/epoch", json!(1001)),

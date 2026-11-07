@@ -97,6 +97,7 @@ async fn run(settings: IssuerSettings) -> anyhow::Result<()> {
         .context("open the database")?;
     let mut config = ServiceConfig::new(deployment, batch_price_wei, settings.start_block);
     config.log_chunk_blocks = settings.log_chunk_blocks;
+    config.block_tag = settings.common.block_tag;
     let service = Arc::new(Service::open(config, pool, chain, Arc::new(SystemClock)).await?);
     service.check_chain().await.context("check the chain")?;
 

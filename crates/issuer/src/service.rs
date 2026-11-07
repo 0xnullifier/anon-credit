@@ -24,6 +24,7 @@ use anon_credit_protocol::issuer_api::{
     MAX_BATCHES_PER_PURCHASE, MembershipProofJson, PendingReason, PublicationStatus, RejectReason,
     RootEventsResponse, TopupResponse, TopupStatus, TreePathResponse,
 };
+use anon_credit_protocol::settings::BlockTag;
 use anon_credit_protocol::wire::DecimalU64;
 use anon_credit_registry::sqlite::{RootSnapshot, latest_snapshot, snapshot_by_root};
 use anon_credit_registry::{Mmr, MmrError, SqliteStore, SqliteStoreError};
@@ -89,6 +90,9 @@ pub struct ServiceConfig {
     pub max_tracked: u64,
     /// Seconds after which a tracked payment without a receipt is removed.
     pub tracking_ttl_seconds: u64,
+    /// Block tag of the chain reads (`BLOCK_TAG`). The chain implementation uses it. The
+    /// service reports it in `GET /v1/config`.
+    pub block_tag: BlockTag,
 }
 
 impl ServiceConfig {
@@ -101,6 +105,7 @@ impl ServiceConfig {
             log_chunk_blocks: 1_000,
             max_tracked: 10_000,
             tracking_ttl_seconds: 3_600,
+            block_tag: BlockTag::Finalized,
         }
     }
 }
@@ -321,6 +326,7 @@ impl<C: Chain> Service<C> {
             batch_price_wei: DecimalU64(self.config.batch_price_wei),
             max_batches_per_purchase: MAX_BATCHES_PER_PURCHASE,
             root_window_epochs: ROOT_WINDOW_EPOCHS,
+            block_tag: self.config.block_tag,
         }
     }
 
