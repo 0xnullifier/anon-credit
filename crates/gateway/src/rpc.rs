@@ -10,7 +10,14 @@
 //!   `id` or with a `null` `id` is a notification and is rejected.
 //! - The method must be in the price table and have a parameter rule here:
 //!   `eth_chainId` and `eth_blockNumber` have no parameters (absent or `[]`);
-//!   `eth_getBalance` has `[address, block]`.
+//!   `eth_getBalance` has `[address, block]`;
+//!   `eth_getTransactionReceipt` has `[hash]` (`0x` and 64 hex digits);
+//!   `eth_call` has `[call, block]`. See [`check_call_object`] for the call object.
+//! - A block is a tag in [`BLOCK_TAGS`] or a canonical hex block number of at most 64 bits.
+//!
+//! `eth_call` can give a large response. The gateway does not limit the response here: the
+//! upstream client stops a response above `GATEWAY_UPSTREAM_RESPONSE_LIMIT_BYTES`, and the
+//! spend gives `upstream_failed` with no charge.
 //!
 //! Upstream response rules: HTTP 200, one JSON object with `jsonrpc` `"2.0"`, the same `id`,
 //! and exactly one of `result` or `error`. An `error` object has an integer `code` and a
@@ -24,8 +31,14 @@ use serde_json::{Map, Value};
 /// Longest string `id` of a JSON-RPC request.
 pub const MAX_ID_LEN: usize = 128;
 
-/// Block tags that `eth_getBalance` accepts.
+/// Block tags that `eth_getBalance` and `eth_call` accept.
 pub const BLOCK_TAGS: [&str; 5] = ["latest", "earliest", "pending", "safe", "finalized"];
+
+/// Largest `data` (or `input`) of an `eth_call` call object, in bytes (8 KiB).
+pub const MAX_CALL_DATA_BYTES: usize = 8 * 1024;
+
+/// Members that an `eth_call` call object can have.
+pub const CALL_OBJECT_KEYS: [&str; 7] = ["from", "to", "data", "input", "value", "gas", "gasPrice"];
 
 /// A request that passed the allowlist.
 #[derive(Debug, Clone, PartialEq)]
@@ -111,26 +124,108 @@ fn check_params(method: &str, params: Option<&Value>) -> Result<(), RpcRejection
                 "eth_getBalance params must be [address, block]",
             )),
         },
+        "eth_getTransactionReceipt" => match list.as_slice() {
+            [Value::String(hash)] if is_hash32(hash) => Ok(()),
+            _ => Err(RpcRejection::Invalid(
+                "eth_getTransactionReceipt params must be [transaction hash]",
+            )),
+        },
+        "eth_call" => match list.as_slice() {
+            [Value::Object(call), Value::String(block)] if is_block_selector(block) => {
+                check_call_object(call)
+            }
+            _ => Err(RpcRejection::Invalid(
+                "eth_call params must be [call object, block]",
+            )),
+        },
         // A method in the price table without a parameter rule is not allowed.
         _ => Err(RpcRejection::MethodNotAllowed),
     }
 }
 
-/// Tell if the text is `0x` and 40 hex digits (either case).
-pub fn is_address(text: &str) -> bool {
-    text.strip_prefix("0x")
-        .is_some_and(|digits| digits.len() == 40 && digits.bytes().all(|b| b.is_ascii_hexdigit()))
+/// Check the call object of `eth_call`.
+///
+/// - `to` (address) is necessary. `from` (address) is optional.
+/// - `data` or `input` (hex bytes, at most [`MAX_CALL_DATA_BYTES`]) is optional. A call object
+///   with the two members is rejected.
+/// - `value` and `gasPrice` (hex quantities of at most 256 bits) and `gas` (hex quantity of at
+///   most 64 bits) are optional.
+/// - Each value is a string. Other members are rejected.
+pub fn check_call_object(call: &Map<String, Value>) -> Result<(), RpcRejection> {
+    for (key, value) in call {
+        let Value::String(text) = value else {
+            return Err(RpcRejection::Invalid(
+                "eth_call object members must be strings",
+            ));
+        };
+        let (valid, message) = match key.as_str() {
+            "from" | "to" => (is_address(text), "eth_call from and to must be addresses"),
+            "data" | "input" => (
+                is_hex_bytes(text, MAX_CALL_DATA_BYTES),
+                "eth_call data must be hex bytes of at most 8192 bytes",
+            ),
+            "value" | "gasPrice" => (
+                is_quantity(text, 64),
+                "eth_call value and gasPrice must be hex quantities of at most 256 bits",
+            ),
+            "gas" => (
+                is_quantity(text, 16),
+                "eth_call gas must be a hex quantity of at most 64 bits",
+            ),
+            _ => {
+                return Err(RpcRejection::Invalid(
+                    "eth_call object has an unknown member",
+                ));
+            }
+        };
+        if !valid {
+            return Err(RpcRejection::Invalid(message));
+        }
+    }
+    if !call.contains_key("to") {
+        return Err(RpcRejection::Invalid("eth_call object needs to"));
+    }
+    if call.contains_key("data") && call.contains_key("input") {
+        return Err(RpcRejection::Invalid(
+            "eth_call object can have data or input, not both",
+        ));
+    }
+    Ok(())
 }
 
-/// Tell if the text is a block tag or a canonical hex block number of at most 64 bits.
-pub fn is_block_selector(text: &str) -> bool {
-    if BLOCK_TAGS.contains(&text) {
-        return true;
-    }
+/// Tell if the text is `0x` and 40 hex digits (either case).
+pub fn is_address(text: &str) -> bool {
+    has_hex_digits(text, 40)
+}
+
+/// Tell if the text is `0x` and 64 hex digits (either case).
+pub fn is_hash32(text: &str) -> bool {
+    has_hex_digits(text, 64)
+}
+
+fn has_hex_digits(text: &str, count: usize) -> bool {
+    text.strip_prefix("0x").is_some_and(|digits| {
+        digits.len() == count && digits.bytes().all(|b| b.is_ascii_hexdigit())
+    })
+}
+
+/// Tell if the text is `0x` and an even number of hex digits (either case) for at most
+/// `max_bytes` bytes. `0x` alone is zero bytes.
+pub fn is_hex_bytes(text: &str, max_bytes: usize) -> bool {
+    text.strip_prefix("0x").is_some_and(|digits| {
+        digits.len() % 2 == 0
+            && digits.len() <= max_bytes * 2
+            && digits.bytes().all(|b| b.is_ascii_hexdigit())
+    })
+}
+
+/// Tell if the text is a canonical hex quantity of at most `max_digits` digits: `0x0`, or
+/// `0x` and lowercase digits with no leading zero.
+pub fn is_quantity(text: &str, max_digits: usize) -> bool {
     match text.strip_prefix("0x").map(str::as_bytes) {
         Some([b'0']) => true,
         Some(digits @ [first, ..]) => {
-            digits.len() <= 16
+            digits.len() <= max_digits
                 && *first != b'0'
                 && digits
                     .iter()
@@ -138,6 +233,11 @@ pub fn is_block_selector(text: &str) -> bool {
         }
         _ => false,
     }
+}
+
+/// Tell if the text is a block tag or a canonical hex block number of at most 64 bits.
+pub fn is_block_selector(text: &str) -> bool {
+    BLOCK_TAGS.contains(&text) || is_quantity(text, 16)
 }
 
 /// Reason why an upstream response is not a completed JSON-RPC call.
@@ -194,11 +294,19 @@ mod tests {
     use super::*;
 
     fn check(text: &str) -> Result<AllowedCall, RpcRejection> {
-        check_request(text.as_bytes(), &PriceTable::initial())
+        check_request(text.as_bytes(), &PriceTable::current())
     }
 
+    fn call(params: &str) -> Result<AllowedCall, RpcRejection> {
+        check(&format!(
+            r#"{{"jsonrpc":"2.0","id":3,"method":"eth_call","params":{params}}}"#
+        ))
+    }
+
+    const TO: &str = "0x00000000219ab540356cbb839cbe05303d7705fa";
+
     #[test]
-    fn allows_the_three_methods_with_their_units() {
+    fn allows_the_initial_methods_with_their_units() {
         let call = check(r#"{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}"#).unwrap();
         assert_eq!((call.method.as_str(), call.units), ("eth_chainId", 1));
         let call = check(r#"{"jsonrpc":"2.0","id":"a","method":"eth_blockNumber"}"#).unwrap();
@@ -216,9 +324,144 @@ mod tests {
     }
 
     #[test]
+    fn allows_the_two_new_methods_with_their_units() {
+        let call_ok = call(&format!(
+            r#"[{{"to":"{TO}","data":"0x70a08231"}},"latest"]"#
+        ))
+        .unwrap();
+        assert_eq!((call_ok.method.as_str(), call_ok.units), ("eth_call", 3));
+        let receipt = check(
+            r#"{"jsonrpc":"2.0","id":4,"method":"eth_getTransactionReceipt","params":["0x88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b"]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            (receipt.method.as_str(), receipt.units),
+            ("eth_getTransactionReceipt", 2)
+        );
+        assert!(check(
+            r#"{"jsonrpc":"2.0","id":4,"method":"eth_getTransactionReceipt","params":["0x88DF016429689C079F3B2F6AD39FA052532C56795B733DA78A91EBE6A713944B"]}"#
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn eth_call_accepts_each_member_and_block() {
+        let data = format!("0x{}", "ab".repeat(MAX_CALL_DATA_BYTES));
+        let good = [
+            format!(r#"[{{"to":"{TO}"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}"}},"0x1b4"]"#),
+            format!(r#"[{{"to":"{TO}"}},"finalized"]"#),
+            format!(r#"[{{"to":"{TO}","data":"0x"}},"pending"]"#),
+            format!(r#"[{{"to":"{TO}","input":"0xABCDEF"}},"safe"]"#),
+            format!(r#"[{{"to":"{TO}","data":"{data}"}},"latest"]"#),
+            format!(
+                r#"[{{"from":"0x000000000000000000000000000000000000dEaD","to":"{TO}","data":"0x00","value":"0x0","gas":"0xffffffffffffffff","gasPrice":"0x3b9aca00"}},"earliest"]"#
+            ),
+            format!(
+                r#"[{{"to":"{TO}","value":"0x{}"}},"latest"]"#,
+                "f".repeat(64)
+            ),
+        ];
+        for params in good {
+            assert_eq!(call(&params).map(|c| c.units), Ok(3), "{params}");
+        }
+    }
+
+    #[test]
+    fn eth_call_rejects_bad_params() {
+        let long = format!("0x{}", "ab".repeat(MAX_CALL_DATA_BYTES + 1));
+        let bad = [
+            // Shape of params.
+            "[]".to_owned(),
+            format!(r#"[{{"to":"{TO}"}}]"#),
+            format!(r#"[{{"to":"{TO}"}},"latest",1]"#),
+            format!(r#"["{TO}","latest"]"#),
+            format!(r#"[[{{"to":"{TO}"}}],"latest"]"#),
+            // Block selector.
+            format!(r#"[{{"to":"{TO}"}},"newest"]"#),
+            format!(r#"[{{"to":"{TO}"}},"0x01"]"#),
+            format!(r#"[{{"to":"{TO}"}},"0x10000000000000000"]"#),
+            format!(r#"[{{"to":"{TO}"}},{{"blockHash":"0x00"}}]"#),
+            format!(r#"[{{"to":"{TO}"}},null]"#),
+            // Call object members.
+            r#"[{},"latest"]"#.to_owned(),
+            r#"[{"data":"0x00"},"latest"]"#.to_owned(),
+            r#"[{"to":null},"latest"]"#.to_owned(),
+            r#"[{"to":"0x00"},"latest"]"#.to_owned(),
+            format!(r#"[{{"to":"{TO}","from":"0x1234"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","nonce":"0x1"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","accessList":[]}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","maxFeePerGas":"0x1"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","data":"0xabc"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","data":"abcd"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","data":"0xzz"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","data":"{long}"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","input":"{long}"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","data":"0x00","input":"0x00"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","value":"0x01"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","value":"0xA"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","value":"0x"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","value":1}},"latest"]"#),
+            format!(
+                r#"[{{"to":"{TO}","value":"0x1{}"}},"latest"]"#,
+                "0".repeat(64)
+            ),
+            format!(r#"[{{"to":"{TO}","gas":"0x10000000000000000"}},"latest"]"#),
+            format!(r#"[{{"to":"{TO}","gasPrice":"10"}},"latest"]"#),
+        ];
+        for params in bad {
+            assert!(
+                matches!(call(&params), Err(RpcRejection::Invalid(_))),
+                "{params}"
+            );
+        }
+        // Duplicate members of the call object are rejected by the strict parser.
+        assert!(matches!(
+            call(&format!(r#"[{{"to":"{TO}","to":"{TO}"}},"latest"]"#)),
+            Err(RpcRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn eth_get_transaction_receipt_rejects_bad_params() {
+        let hash = "88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b";
+        let bad = [
+            "[]".to_owned(),
+            format!(r#"["0x{hash}","latest"]"#),
+            format!(r#"["{hash}"]"#),
+            format!(r#"["0x{}"]"#, &hash[1..]),
+            format!(r#"["0x{hash}00"]"#),
+            format!(r#"["0x{}zz"]"#, &hash[2..]),
+            format!(r#"[{{"hash":"0x{hash}"}}]"#),
+            "[null]".to_owned(),
+        ];
+        for params in bad {
+            let text = format!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":{params}}}"#
+            );
+            assert!(
+                matches!(check(&text), Err(RpcRejection::Invalid(_))),
+                "{params}"
+            );
+        }
+    }
+
+    #[test]
+    fn version_one_table_does_not_allow_the_new_methods() {
+        let v1 = PriceTable::initial();
+        let text = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{{"to":"{TO}"}},"latest"]}}"#
+        );
+        assert_eq!(
+            check_request(text.as_bytes(), &v1),
+            Err(RpcRejection::MethodNotAllowed)
+        );
+    }
+
+    #[test]
     fn rejects_other_methods() {
         assert_eq!(
-            check(r#"{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[]}"#),
+            check(r#"{"jsonrpc":"2.0","id":1,"method":"eth_getLogs","params":[]}"#),
             Err(RpcRejection::MethodNotAllowed)
         );
         assert_eq!(

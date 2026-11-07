@@ -181,6 +181,8 @@ pub struct FakeUpstream {
     pub calls: AtomicUsize,
     pub delay_ms: AtomicU64,
     pub bodies: Mutex<Vec<Bytes>>,
+    /// If set, the fake counts and records the call, and then sends it to this upstream.
+    pub relay: Mutex<Option<Arc<dyn Upstream>>>,
 }
 
 impl Default for FakeUpstream {
@@ -190,6 +192,7 @@ impl Default for FakeUpstream {
             calls: AtomicUsize::new(0),
             delay_ms: AtomicU64::new(0),
             bodies: Mutex::new(Vec::new()),
+            relay: Mutex::new(None),
         }
     }
 }
@@ -202,6 +205,11 @@ impl FakeUpstream {
     pub fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
+
+    /// Send the next calls to a real upstream client.
+    pub fn relay_to(&self, upstream: Arc<dyn Upstream>) {
+        *self.relay.lock().unwrap() = Some(upstream);
+    }
 }
 
 pub fn upstream_result(method: &str) -> Value {
@@ -209,6 +217,13 @@ pub fn upstream_result(method: &str) -> Value {
         "eth_chainId" => json!("0xaa36a7"),
         "eth_blockNumber" => json!("0x8a3b1c"),
         "eth_getBalance" => json!("0xde0b6b3a7640000"),
+        "eth_call" => json!(format!("0x{}", "00".repeat(31) + "2a")),
+        "eth_getTransactionReceipt" => json!({
+            "transactionHash": TX_HASH,
+            "status": "0x1",
+            "blockNumber": "0x8a3b1c",
+            "logs": [],
+        }),
         _ => Value::Null,
     }
 }
@@ -218,6 +233,10 @@ impl Upstream for FakeUpstream {
     async fn call(&self, body: Bytes) -> Result<UpstreamReply, UpstreamError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.bodies.lock().unwrap().push(body.clone());
+        let relay = self.relay.lock().unwrap().clone();
+        if let Some(relay) = relay {
+            return relay.call(body).await;
+        }
         let delay = self.delay_ms.load(Ordering::SeqCst);
         if delay > 0 {
             tokio::time::sleep(Duration::from_millis(delay)).await;
@@ -352,7 +371,7 @@ impl Harness {
         let cached = store.cached_roots(0).await.unwrap();
         let config = GatewayConfig::new(
             deployment(),
-            PriceTable::initial(),
+            PriceTable::current(),
             options.limits.clone(),
             SEPOLIA_CHAIN_ID,
             ADMIN_TOKEN.to_owned(),
@@ -521,8 +540,25 @@ pub struct Client {
     pub batch_id: Bytes32,
 }
 
+/// Transaction hash of the `eth_getTransactionReceipt` requests of the tests.
+pub const TX_HASH: &str = "0x88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b";
+
+/// `eth_call` request bytes with this call object.
+pub fn eth_call_bytes(id: u64, call: &Value) -> Vec<u8> {
+    format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"eth_call","params":[{call},"latest"]}}"#)
+        .into_bytes()
+}
+
 pub fn rpc_bytes(method: &str, id: u64) -> Vec<u8> {
     match method {
+        "eth_call" => eth_call_bytes(
+            id,
+            &json!({"to": "0x00000000219ab540356cbb839cbe05303d7705fa", "data": "0x70a08231"}),
+        ),
+        "eth_getTransactionReceipt" => format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"method":"eth_getTransactionReceipt","params":["{TX_HASH}"]}}"#
+        )
+        .into_bytes(),
         "eth_getBalance" => format!(
             r#"{{"jsonrpc":"2.0","id":{id},"method":"eth_getBalance","params":["0x00000000219ab540356cbb839cbe05303d7705fa","latest"]}}"#
         )

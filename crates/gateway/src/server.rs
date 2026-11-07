@@ -128,7 +128,7 @@ pub async fn run(settings: GatewaySettings) -> anyhow::Result<()> {
     let roots = RootTracker::new(source, cached);
     let mut config = GatewayConfig::new(
         deployment,
-        PriceTable::initial(),
+        PriceTable::current(),
         limits,
         chain_id,
         admin_token,

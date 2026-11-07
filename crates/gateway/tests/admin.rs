@@ -138,8 +138,8 @@ async fn snapshot_has_the_deployment_prices_and_accepted_roots() {
     let prices: PricesResponse = h.get("/v1/prices").await.json();
     assert_eq!(snapshot.price_table, prices.price_table);
     assert_eq!(snapshot.price_table_hash, prices.price_table_hash);
-    assert_eq!(snapshot.price_table, PriceTable::initial());
-    assert_eq!(snapshot.price_table_hash, PriceTable::initial().hash());
+    assert_eq!(snapshot.price_table, PriceTable::current());
+    assert_eq!(snapshot.price_table_hash, PriceTable::current().hash());
     let roots: RootsResponse = h.get("/v1/roots").await.json();
     assert_eq!(snapshot.accepted_roots, roots.roots);
     assert_eq!(snapshot.accepted_roots.len(), 1);

@@ -4,12 +4,20 @@
 
 mod common;
 
+use anon_credit_gateway::upstream::HttpUpstream;
 use anon_credit_protocol::api::{GatewayErrorBody, StatusResponse};
 use anon_credit_protocol::{Bytes32, ErrorCode};
+use axum::Router;
+use axum::body::{Body, Bytes};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::routing::post;
 use common::*;
+use serde_json::{Value, json};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 async fn opened(n: u64) -> (Harness, Client) {
     let h = Harness::new().await;
@@ -70,6 +78,175 @@ async fn three_reads_charge_1_1_2_units() {
         .unwrap();
     assert_eq!(receipts.len(), 3);
     assert_eq!(receipts[0].method, "eth_getBalance");
+}
+
+#[tokio::test]
+async fn eth_call_and_receipt_charge_3_and_2_units() {
+    let (h, client) = opened(31).await;
+    let plan = [
+        ("eth_call", 3u64, "97"),
+        ("eth_getTransactionReceipt", 5, "95"),
+    ];
+    for (seq, (method, units_total, remaining)) in plan.iter().enumerate() {
+        let seq = seq as u64;
+        let rpc = rpc_bytes(method, seq + 1);
+        let request = client.spend_request(&h, seq, *units_total, rpc.clone());
+        let response = h.spend(&request).await;
+        assert_eq!(
+            response.status,
+            StatusCode::OK,
+            "{method}: {}",
+            String::from_utf8_lossy(&response.body)
+        );
+        assert_eq!(
+            headers(&response),
+            (
+                remaining.to_string(),
+                (seq + 1).to_string(),
+                "false".to_owned()
+            )
+        );
+        let body: Value = response.json();
+        assert_eq!(body["result"], upstream_result(method));
+        assert_eq!(
+            h.upstream.bodies.lock().unwrap().last().unwrap().as_ref(),
+            rpc.as_slice()
+        );
+    }
+    let row = h.session_row(&client).await.unwrap();
+    assert_eq!((row.remaining, row.units_total, row.next_seq), (95, 5, 2));
+    let receipts = h
+        .gateway
+        .store
+        .receipts(&client.batch_id, 10)
+        .await
+        .unwrap();
+    let mut methods: Vec<(String, u32)> = receipts
+        .iter()
+        .map(|receipt| (receipt.method.clone(), receipt.units))
+        .collect();
+    methods.sort();
+    assert_eq!(
+        methods,
+        vec![
+            ("eth_call".to_owned(), 3),
+            ("eth_getTransactionReceipt".to_owned(), 2)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn bad_eth_call_and_receipt_params_are_rejected_before_the_upstream() {
+    let (h, client) = opened(32).await;
+    let to = "0x00000000219ab540356cbb839cbe05303d7705fa";
+    let long = format!("0x{}", "ab".repeat(8 * 1024 + 1));
+    let bad: [Vec<u8>; 5] = [
+        eth_call_bytes(1, &json!({"data": "0x00"})),
+        eth_call_bytes(1, &json!({"to": to, "nonce": "0x1"})),
+        eth_call_bytes(1, &json!({"to": to, "data": long})),
+        br#"{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0x00000000219ab540356cbb839cbe05303d7705fa"}]}"#.to_vec(),
+        br#"{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0x1234"]}"#.to_vec(),
+    ];
+    for rpc in bad {
+        let units = match rpc.windows(8).any(|w| w == b"eth_call") {
+            true => 3,
+            false => 2,
+        };
+        let request = client.spend_request(&h, 0, units, rpc.clone());
+        let response = h.spend(&request).await;
+        assert_eq!(
+            response.status,
+            StatusCode::BAD_REQUEST,
+            "{}",
+            String::from_utf8_lossy(&rpc)
+        );
+        assert_eq!(response.error_code(), ErrorCode::InvalidRequest);
+    }
+    assert_eq!(h.upstream.calls(), 0);
+    let row = h.session_row(&client).await.unwrap();
+    assert_eq!((row.remaining, row.next_seq, row.units_total), (100, 0, 0));
+}
+
+/// A loopback JSON-RPC node for `eth_call`. The call data selects the result:
+/// `0x01` gives a result above the response limit with a `content-length` header, `0x02`
+/// gives a result above the limit as a stream with no length, and other data gives a
+/// 32-byte result.
+async fn serve_eth_call_node(limit: usize) -> SocketAddr {
+    let app = Router::new().route(
+        "/",
+        post(move |body: Bytes| async move {
+            let request: Value = serde_json::from_slice(&body).unwrap();
+            let data = request["params"][0]["data"]
+                .as_str()
+                .unwrap_or("")
+                .to_owned();
+            let large = format!("0x{}", "ab".repeat(limit));
+            let text = |result: &str| {
+                json!({"jsonrpc": "2.0", "id": request["id"], "result": result}).to_string()
+            };
+            let response: Response = match data.as_str() {
+                "0x01" => text(&large).into_response(),
+                "0x02" => {
+                    let chunks: Vec<Result<Bytes, std::io::Error>> = text(&large)
+                        .into_bytes()
+                        .chunks(4096)
+                        .map(|chunk| Ok(Bytes::copy_from_slice(chunk)))
+                        .collect();
+                    Body::from_stream(futures_util::stream::iter(chunks)).into_response()
+                }
+                _ => text(&format!("0x{}", "00".repeat(31) + "2a")).into_response(),
+            };
+            response
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    addr
+}
+
+#[tokio::test]
+async fn eth_call_response_above_the_limit_is_upstream_failed_without_charge() {
+    let (h, client) = opened(33).await;
+    let limit = h.gateway.config.limits.upstream_response_bytes;
+    let addr = serve_eth_call_node(limit).await;
+    let url = reqwest::Url::parse(&format!("http://{addr}/")).unwrap();
+    h.upstream.relay_to(Arc::new(
+        HttpUpstream::new(url, Duration::from_secs(5), limit).unwrap(),
+    ));
+    let to = "0x00000000219ab540356cbb839cbe05303d7705fa";
+
+    for data in ["0x01", "0x02"] {
+        let rpc = eth_call_bytes(1, &json!({"to": to, "data": data}));
+        let request = client.spend_request(&h, 0, 3, rpc);
+        let response = h.spend(&request).await;
+        assert_eq!(response.status, StatusCode::BAD_GATEWAY, "data {data}");
+        assert_eq!(response.error_code(), ErrorCode::UpstreamFailed);
+        assert!(response.json::<GatewayErrorBody>().retryable);
+        let row = h.session_row(&client).await.unwrap();
+        assert_eq!((row.remaining, row.next_seq, row.units_total), (100, 0, 0));
+    }
+    assert_eq!(h.upstream.calls(), 2);
+    assert!(
+        h.gateway
+            .store
+            .receipts(&client.batch_id, 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // The gateway continues to serve: the same sequence with a small result is charged.
+    let rpc = eth_call_bytes(2, &json!({"to": to, "data": "0x70a08231"}));
+    let request = client.spend_request(&h, 0, 3, rpc);
+    let response = h.spend(&request).await;
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(
+        headers(&response),
+        ("97".to_owned(), "1".to_owned(), "false".to_owned())
+    );
 }
 
 #[tokio::test]
@@ -206,8 +383,8 @@ async fn units_total_must_be_cumulative() {
 #[tokio::test]
 async fn methods_and_params_are_allowlisted() {
     let (h, client) = opened(10).await;
-    let call = br#"{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[]}"#.to_vec();
-    let response = h.spend(&client.spend_request(&h, 0, 1, call)).await;
+    let logs = br#"{"jsonrpc":"2.0","id":1,"method":"eth_getLogs","params":[]}"#.to_vec();
+    let response = h.spend(&client.spend_request(&h, 0, 1, logs)).await;
     assert_eq!(response.error_code(), ErrorCode::MethodNotAllowed);
     let bad_params = br#"{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[1]}"#.to_vec();
     let response = h.spend(&client.spend_request(&h, 0, 1, bad_params)).await;

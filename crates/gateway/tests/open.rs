@@ -373,7 +373,7 @@ async fn config_prices_and_roots_are_published() {
         anon_credit_protocol::settings::BlockTag::Finalized
     );
     let prices: PricesResponse = h.get("/v1/prices").await.json();
-    assert_eq!(prices.price_table, PriceTable::initial());
+    assert_eq!(prices.price_table, PriceTable::current());
     assert_eq!(prices.price_table_hash, prices.price_table.hash());
     assert_eq!(config.price_table_hash, prices.price_table_hash);
     let roots: RootsResponse = h.get("/v1/roots").await.json();
