@@ -7,6 +7,7 @@
 //! environment. Never write them into tracked configuration. Never print their values.
 
 use crate::deployment::{DeploymentConfig, EPOCH_SECONDS_TESTNET};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -39,6 +40,55 @@ pub enum SettingsError {
 pub const EPOCH_SECONDS_VAR: &str = "EPOCH_SECONDS";
 /// Name of the variable with the path of the deployment TOML file.
 pub const DEPLOYMENT_CONFIG_VAR: &str = "DEPLOYMENT_CONFIG";
+/// Name of the variable with the block tag of the chain readers.
+pub const BLOCK_TAG_VAR: &str = "BLOCK_TAG";
+
+/// The block tag at which the chain readers trust the chain (`BLOCK_TAG`).
+///
+/// The issuer sale indexer, the issuer root publisher, and the gateway root source read the
+/// chain at this tag. Production uses `finalized`. `safe` and `latest` give less protection
+/// from a reorganization. `latest` trades reorg safety for speed: use it only on a testnet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BlockTag {
+    /// `finalized` (default): the block cannot be reverted without a large slashing.
+    #[default]
+    Finalized,
+    /// `safe`: the block has a supermajority attestation. A reorganization is unlikely.
+    Safe,
+    /// `latest`: the newest block. A reorganization can remove it. Testnet only.
+    Latest,
+}
+
+impl BlockTag {
+    /// The text of the tag.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Finalized => "finalized",
+            Self::Safe => "safe",
+            Self::Latest => "latest",
+        }
+    }
+}
+
+impl std::fmt::Display for BlockTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for BlockTag {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        match text {
+            "finalized" => Ok(Self::Finalized),
+            "safe" => Ok(Self::Safe),
+            "latest" => Ok(Self::Latest),
+            _ => Err("must be finalized, safe, or latest".to_owned()),
+        }
+    }
+}
 
 /// Settings that the issuer and the gateway share.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +97,8 @@ pub struct CommonSettings {
     pub epoch_seconds: u32,
     /// Deployment file path and its parsed contents, if `DEPLOYMENT_CONFIG` is set.
     pub deployment: Option<(PathBuf, DeploymentConfig)>,
+    /// Block tag of the chain readers (`BLOCK_TAG`). Default: `finalized`.
+    pub block_tag: BlockTag,
 }
 
 impl CommonSettings {
@@ -102,12 +154,22 @@ impl CommonSettings {
         Ok(Self {
             epoch_seconds,
             deployment,
+            block_tag: read_parsed(lookup, BLOCK_TAG_VAR, BlockTag::Finalized)?,
         })
     }
 
     /// Write the summary lines for the shared settings.
     pub fn summary_lines(&self) -> Vec<String> {
-        let mut lines = vec![format!("epoch_seconds: {}", self.epoch_seconds)];
+        let mut lines = vec![
+            format!("epoch_seconds: {}", self.epoch_seconds),
+            format!("block tag: {}", self.block_tag),
+        ];
+        if self.block_tag != BlockTag::Finalized {
+            lines.push(format!(
+                "WARNING: BLOCK_TAG={} trades reorg safety for speed; use it only on a testnet",
+                self.block_tag
+            ));
+        }
         match &self.deployment {
             None => lines.push("deployment: not set (DEPLOYMENT_CONFIG)".to_owned()),
             Some((path, config)) => {
@@ -256,6 +318,61 @@ mod tests {
             ("EPOCH_SECONDS", "900"),
         ]));
         assert!(mismatch.is_err());
+    }
+
+    /// The `KEY=value` pairs of an env example file. Comments and empty values are not set.
+    fn env_file(name: &str) -> impl Fn(&str) -> Option<String> {
+        let path = format!("{}/../../config/{name}", env!("CARGO_MANIFEST_DIR"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        let map: HashMap<String, String> = text
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| line.split_once('='))
+            .filter(|(_, value)| !value.is_empty())
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect();
+        move |name| map.get(name).cloned()
+    }
+
+    #[test]
+    fn block_tag_defaults_to_finalized_and_rejects_other_text() {
+        let settings = CommonSettings::from_lookup(&env(&[])).unwrap();
+        assert_eq!(settings.block_tag, BlockTag::Finalized);
+        assert!(!settings.summary_lines().join("\n").contains("WARNING"));
+        for (text, tag) in [
+            ("finalized", BlockTag::Finalized),
+            ("safe", BlockTag::Safe),
+            ("latest", BlockTag::Latest),
+        ] {
+            let settings = CommonSettings::from_lookup(&env(&[("BLOCK_TAG", text)])).unwrap();
+            assert_eq!(settings.block_tag, tag);
+            assert_eq!(serde_json::to_value(tag).unwrap(), text);
+        }
+        let latest = CommonSettings::from_lookup(&env(&[("BLOCK_TAG", "latest")])).unwrap();
+        assert!(
+            latest
+                .summary_lines()
+                .join("\n")
+                .contains("WARNING: BLOCK_TAG=latest")
+        );
+        for bad in ["Finalized", "pending", "earliest", "0x10"] {
+            assert!(CommonSettings::from_lookup(&env(&[("BLOCK_TAG", bad)])).is_err());
+        }
+    }
+
+    #[test]
+    fn production_example_keeps_the_finalized_tag() {
+        let production = CommonSettings::from_lookup(&env_file("production.env.example")).unwrap();
+        assert_eq!(production.epoch_seconds, 900);
+        assert_eq!(production.block_tag, BlockTag::Finalized);
+        // The demo example points at a deployment file that git ignores. Read only the tag.
+        let demo_tag = read_parsed(
+            &env_file("testnet-demo.env.example"),
+            BLOCK_TAG_VAR,
+            BlockTag::Finalized,
+        )
+        .unwrap();
+        assert_eq!(demo_tag, BlockTag::Latest);
     }
 
     #[test]
