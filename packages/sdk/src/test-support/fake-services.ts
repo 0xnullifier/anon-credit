@@ -8,6 +8,8 @@ import { TransportError } from "@anon-credit/anon-transport";
 import { fieldToHex } from "@anon-credit/crypto";
 import {
   INITIAL_PRICE_TABLE,
+  OPEN_CHUNK_MAX_BYTES,
+  OPEN_CHUNK_PATH_PREFIX,
   PROTOCOL_VERSION,
   decodeBase64,
   decodeFixedHex,
@@ -15,10 +17,10 @@ import {
   deploymentConfigSchema,
   encodeBase64,
   encodeHex,
-  openChunkRequestSchema,
   openMessageDigest,
   openMessageFromRequest,
   openRequestSchema,
+  parseOpenChunkPath,
   priceTableHash,
   spendMessageDigest,
   spendRequestSchema,
@@ -62,7 +64,10 @@ export interface CallRecord {
   readonly method: string;
   readonly path: string;
   readonly isolationKey: string;
+  // Text of a JSON body. undefined for a binary body (proof chunks) and for no body.
   readonly body: string | undefined;
+  // Raw bytes of a binary body.
+  readonly bytes: Uint8Array | undefined;
 }
 
 interface FakeSession {
@@ -178,15 +183,16 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
     }
   };
 
-  const putChunk = (body: string | undefined): Response => {
-    const chunk = openChunkRequestSchema.parse(JSON.parse(body ?? ""));
+  // PUT /v1/open/chunks/... with the raw chunk bytes as the body.
+  const putChunk = (path: string, data: Uint8Array | undefined): Response => {
+    const chunk = parseOpenChunkPath(path);
+    if (chunk === null || data === undefined || data.byteLength === 0 || data.byteLength > OPEN_CHUNK_MAX_BYTES) return error(400, "invalid_request");
     const key = `${chunk.batch_id}:${chunk.proof_sha256}`;
     const upload = uploads.get(key) ?? { total: chunk.total_bytes, count: chunk.chunk_count, chunks: new Array<Uint8Array | undefined>(chunk.chunk_count).fill(undefined), complete: false };
     uploads.set(key, upload);
     if (upload.total !== chunk.total_bytes || upload.count !== chunk.chunk_count || chunk.chunk_index >= upload.count) return error(400, "invalid_request");
-    const data = decodeBase64(chunk.data);
     const existing = upload.chunks[chunk.chunk_index];
-    if (existing !== undefined && encodeBase64(existing) !== chunk.data) return error(400, "invalid_request");
+    if (existing !== undefined && encodeHex(existing) !== encodeHex(data)) return error(400, "invalid_request");
     upload.chunks[chunk.chunk_index] = data;
     const received = upload.chunks.filter((item) => item !== undefined).length;
     if (received === upload.count && !upload.complete) {
@@ -200,7 +206,8 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
     return json(200, { received_chunks: received, complete: upload.complete });
   };
 
-  const gateway = async (method: string, path: string, body: string | undefined): Promise<Response> => {
+  const gateway = async (method: string, path: string, body: string | undefined, bytes: Uint8Array | undefined): Promise<Response> => {
+    if (method === "PUT" && path.startsWith(`${OPEN_CHUNK_PATH_PREFIX}/`)) return putChunk(path, bytes);
     switch (`${method} ${path}`) {
       case "GET /v1/config":
         return json(200, {
@@ -228,7 +235,7 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
             response_retention_seconds: 60,
             batch_lock_wait_ms: 5000,
             open_upload_max_bytes: 4_194_304,
-            open_upload_chunk_bytes: 24_576,
+            open_upload_chunk_bytes: 40_000,
             open_upload_chunk_body_bytes: 40_000,
             open_upload_max_chunks: 256,
             open_upload_ttl_seconds: 600,
@@ -245,8 +252,6 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
           root_window_epochs: 96,
           roots: [...roots].reverse().map((root) => ({ source_epoch: root.epoch.toString(10), root: fieldToHex(root.root), leaf_count: root.leafCount })),
         });
-      case "PUT /v1/open/chunks":
-        return putChunk(body);
       case "POST /v1/open": {
         const request = openRequestSchema.parse(JSON.parse(body ?? ""));
         const proof = await proofOf(request);
@@ -395,13 +400,16 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
     isolationKeys: () => [...keys],
     close: () => undefined,
     fetch: async (url, init, options) => {
-      const body = typeof init.body === "string" || init.body === undefined ? init.body : await new Response(init.body).text();
+      const raw = init.body instanceof ReadableStream ? new Uint8Array(await new Response(init.body).arrayBuffer()) : init.body;
+      const body = typeof raw === "string" ? raw : undefined;
+      const bytes = raw instanceof Uint8Array ? raw : undefined;
+      const size = body?.length ?? bytes?.byteLength ?? 0;
       if (hooks.transportDown) throw new TransportError("network_error", "fake: the transport is down");
       const parsed = new URL(url);
       if (!keys.includes(options.isolationKey)) keys.push(options.isolationKey);
-      calls.push({ method: init.method, path: parsed.pathname, isolationKey: options.isolationKey, body });
-      if (parsed.pathname === "/v1/open/chunks") {
-        if (body !== undefined && body.length > transport.maxBodyBytes) throw new TransportError("worker_error", "fake: the body is too large");
+      calls.push({ method: init.method, path: parsed.pathname, isolationKey: options.isolationKey, body, bytes });
+      if (size > transport.maxBodyBytes) throw new TransportError("worker_error", "fake: the body is too large");
+      if (parsed.pathname.startsWith(`${OPEN_CHUNK_PATH_PREFIX}/`)) {
         if (hooks.failChunks > 0) {
           hooks.failChunks -= 1;
           throw new TransportError("network_error", "fake: the chunk request failed");
@@ -413,15 +421,14 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
           // Let other requests start, so that parallel requests overlap.
           await new Promise((resolve) => setTimeout(resolve, 1));
           chunkStats.received += 1;
-          return await gateway(init.method, parsed.pathname, body);
+          return await gateway(init.method, parsed.pathname, body, bytes);
         } finally {
           inFlight -= 1;
         }
       }
-      if (body !== undefined && body.length > transport.maxBodyBytes) throw new TransportError("worker_error", "fake: the body is too large");
       switch (parsed.origin) {
         case GATEWAY_URL:
-          return gateway(init.method, parsed.pathname, body);
+          return gateway(init.method, parsed.pathname, body, bytes);
         case ISSUER_URL:
           return issuer(parsed.pathname, parsed.searchParams);
         default:

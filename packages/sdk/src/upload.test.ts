@@ -1,6 +1,6 @@
 // Chunked proof upload against the fake gateway.
 
-import { OPEN_CHUNK_BODY_LIMIT_BYTES, OPEN_CHUNK_MAX_BYTES, decodeBase64, encodeBase64, encodeHex, openRequestSchema } from "@anon-credit/protocol";
+import { OPEN_CHUNK_MAX_BYTES, OPEN_CHUNK_PATH_PREFIX, encodeBase64, encodeHex, openChunkPath, openRequestSchema, parseOpenChunkPath } from "@anon-credit/protocol";
 import type { ProofResult } from "@anon-credit/prover";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import { ServiceError } from "./errors.ts";
 import type { ProverLike } from "./open.ts";
 import { fakeServices, type CallRecord } from "./test-support/fake-services.ts";
 import { issued, testClient } from "./test-support/client.ts";
-import { encodeProof, planUpload, sendChunks, type EncodedProof } from "./upload.ts";
+import { DEFAULT_UPLOAD_POLICY, encodeProof, planUpload, sendChunks, uploadChunkBytes, type EncodedProof } from "./upload.ts";
 
 // A JSON-like proof of about the size of a real ProveKit JSON proof part. It compresses less
 // than a real proof, so it gives more chunks.
@@ -34,7 +34,7 @@ function proverOf(proof: Uint8Array<ArrayBuffer>): ProverLike {
 }
 
 function chunkCalls(calls: readonly CallRecord[]): CallRecord[] {
-  return calls.filter((call) => call.path === "/v1/open/chunks");
+  return calls.filter((call) => call.path.startsWith(`${OPEN_CHUNK_PATH_PREFIX}/`));
 }
 
 function openBody(calls: readonly CallRecord[]): ReturnType<typeof openRequestSchema.parse> {
@@ -43,19 +43,40 @@ function openBody(calls: readonly CallRecord[]): ReturnType<typeof openRequestSc
 }
 
 describe("planUpload", () => {
-  it("splits the bytes into chunks of at most 24 KiB with the SHA-256 of all bytes", async () => {
+  it("splits the bytes into raw chunks of at most 40,000 bytes with the SHA-256 of all bytes", async () => {
     const encoded: EncodedProof = { bytes: bigProof(100_000), encoding: "json" };
     const plan = planUpload(`0x${"01".repeat(32)}`, encoded);
     expect(plan.chunks.length).toBe(Math.ceil(100_000 / OPEN_CHUNK_MAX_BYTES));
     expect(plan.reference.proof_sha256).toBe(encodeHex(sha256(encoded.bytes)));
     expect(plan.reference.total_bytes).toBe(100_000);
-    const joined = plan.chunks.flatMap((chunk) => [...decodeBase64(chunk.data)]);
+    const joined = plan.chunks.flatMap((chunk) => [...chunk.data]);
     expect(Uint8Array.from(joined)).toEqual(encoded.bytes);
-    for (const chunk of plan.chunks) {
-      expect(JSON.stringify(chunk).length).toBeLessThan(OPEN_CHUNK_BODY_LIMIT_BYTES);
-      expect(chunk.chunk_count).toBe(plan.chunks.length);
-    }
+    plan.chunks.forEach((chunk, index) => {
+      expect(chunk.data.byteLength).toBeLessThanOrEqual(OPEN_CHUNK_MAX_BYTES);
+      // Each chunk has its own buffer, not a view of the full upload.
+      expect(chunk.data.buffer.byteLength).toBe(chunk.data.byteLength);
+      expect(chunk.path.chunk_count).toBe(plan.chunks.length);
+      expect(chunk.path.chunk_index).toBe(index);
+      expect(parseOpenChunkPath(openChunkPath(chunk.path))).toEqual(chunk.path);
+    });
+    expect(planUpload(`0x${"01".repeat(32)}`, encoded, 10_000).chunks.length).toBe(10);
     expect(() => planUpload(`0x${"01".repeat(32)}`, encoded, OPEN_CHUNK_MAX_BYTES + 1)).toThrow();
+  });
+
+  it("plans a 318,335-byte upload as 8 chunks", () => {
+    const plan = planUpload(`0x${"01".repeat(32)}`, { bytes: new Uint8Array(318_335), encoding: "json+gzip" });
+    expect(plan.chunks.length).toBe(8);
+    expect(plan.chunks.at(-1)?.data.byteLength).toBe(318_335 - 7 * 40_000);
+    expect(DEFAULT_UPLOAD_POLICY.parallel).toBe(8);
+  });
+
+  it("takes the chunk size from the gateway limits and the transport body limit", () => {
+    const limits = { open_upload_chunk_bytes: 40_000, open_upload_chunk_body_bytes: 40_000 };
+    expect(uploadChunkBytes(limits, Number.POSITIVE_INFINITY)).toBe(40_000);
+    expect(uploadChunkBytes({ ...limits, open_upload_chunk_bytes: 24_576 }, Number.POSITIVE_INFINITY)).toBe(24_576);
+    expect(uploadChunkBytes({ ...limits, open_upload_chunk_bytes: 100_000, open_upload_chunk_body_bytes: 100_000 }, 40_000)).toBe(40_000);
+    expect(uploadChunkBytes(limits, 30_000)).toBe(30_000);
+    expect(() => uploadChunkBytes({ ...limits, open_upload_chunk_bytes: 0 }, 40_000)).toThrow();
   });
 
   it("gzips the JSON proof", async () => {
@@ -69,8 +90,8 @@ describe("planUpload", () => {
 });
 
 describe("submitOpen with a chunked proof", () => {
-  it("uploads through the anonymous transport on the batch key, 4 at a time, then opens", async () => {
-    const proof = bigProof(400_000);
+  it("uploads through the anonymous transport on the batch key, 8 at a time, then opens", async () => {
+    const proof = bigProof(800_000);
     const fake = fakeServices("anon");
     fake.hooks.validProof = encodeBase64(proof);
     const setup = await testClient({ prover: proverOf(proof) }, fake);
@@ -82,17 +103,21 @@ describe("submitOpen with a chunked proof", () => {
     const stats = outcome.upload;
     if (stats === null) throw new Error("no upload");
     expect(stats.encoding).toBe("json+gzip");
-    expect(stats.proofBytes).toBe(400_000);
-    expect(stats.chunks).toBeGreaterThan(4);
-    expect(stats.parallel).toBe(4);
+    expect(stats.proofBytes).toBe(800_000);
+    expect(stats.chunks).toBeGreaterThan(8);
+    expect(stats.parallel).toBe(8);
     expect(stats.fellBack).toBe(false);
     expect(stats.sends).toBe(stats.chunks);
     expect(stats.chunkMs.length).toBe(stats.chunks);
-    expect(fake.chunkStats.maxInFlight).toBe(4);
+    expect(fake.chunkStats.maxInFlight).toBe(8);
     const chunks = chunkCalls(fake.calls);
     expect(chunks.length).toBe(stats.chunks);
     expect(chunks.every((call) => call.method === "PUT" && call.isolationKey === first)).toBe(true);
-    expect(chunks.every((call) => (call.body ?? "").length < 40_000)).toBe(true);
+    // Raw bodies: no JSON text, at most 40,000 bytes, all full except the last.
+    expect(chunks.every((call) => call.body === undefined && call.bytes !== undefined)).toBe(true);
+    const sizes = chunks.map((call) => call.bytes?.byteLength ?? 0);
+    expect(Math.max(...sizes)).toBe(40_000);
+    expect(sizes.reduce((sum, size) => sum + size, 0)).toBe(stats.uploadBytes);
     const wire = openBody(fake.calls);
     expect("proof" in wire).toBe(false);
     expect("proof_upload" in wire && wire.proof_upload.total_bytes === stats.uploadBytes).toBe(true);
@@ -128,8 +153,9 @@ describe("submitOpen with a chunked proof", () => {
     fake.hooks.failChunks = 2;
     const outcome = await setup.client.submitOpen(first, (await setup.client.prepareOpen(first)).request);
     expect(outcome.upload?.sends).toBe(3);
-    const bodies = chunkCalls(fake.calls).map((call) => call.body);
-    expect(new Set(bodies).size).toBe(1);
+    const sent = chunkCalls(fake.calls);
+    expect(new Set(sent.map((call) => encodeHex(call.bytes ?? new Uint8Array()))).size).toBe(1);
+    expect(new Set(sent.map((call) => call.path)).size).toBe(1);
 
     fake.hooks.failChunks = 10;
     await expect(setup.client.submitOpen(second, (await setup.client.prepareOpen(second)).request)).rejects.toMatchObject({
