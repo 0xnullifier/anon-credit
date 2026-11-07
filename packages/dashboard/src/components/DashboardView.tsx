@@ -1,6 +1,7 @@
 // The dashboard page: the four views, the demo comparison, and the proof and privacy panel
 // on one page.
 
+import type { BlockTag } from "@anon-credit/protocol";
 import type { Connection } from "../lib/api.ts";
 import type { FetchLike } from "../lib/http.ts";
 import { useDashboard } from "../useDashboard.ts";
@@ -8,6 +9,7 @@ import { DemoComparisonPanel } from "./DemoComparisonPanel.tsx";
 import { DiagnosticsPanel } from "./DiagnosticsPanel.tsx";
 import { EventList } from "./EventList.tsx";
 import { HealthPanel } from "./HealthPanel.tsx";
+import { Pill } from "./common.tsx";
 import { PrivacyPanel } from "./PrivacyPanel.tsx";
 import { SessionPanel } from "./SessionPanel.tsx";
 
@@ -16,6 +18,18 @@ export interface DashboardViewProps {
   readonly fetchFn: FetchLike;
   readonly onSignOut: () => void;
   readonly onGatewayUrl: (url: string) => void;
+}
+
+// A visible marker when the gateway does not read roots at the finalized tag (the testnet demo).
+export function BlockTagMarker(props: { readonly blockTag: BlockTag | null }) {
+  switch (props.blockTag) {
+    case null:
+    case "finalized":
+      return null;
+    case "safe":
+    case "latest":
+      return <Pill tone="warn">block tag: {props.blockTag} (demo)</Pill>;
+  }
 }
 
 export function DashboardView(props: DashboardViewProps) {
@@ -28,6 +42,7 @@ export function DashboardView(props: DashboardViewProps) {
       <header className="top">
         <h1>Gateway dashboard</h1>
         <span className="muted mono">{connection.adminUrl}</span>
+        <BlockTagMarker blockTag={board.config.state === "ready" ? board.config.value.block_tag : null} />
         <button type="button" onClick={props.onSignOut}>
           Sign out
         </button>

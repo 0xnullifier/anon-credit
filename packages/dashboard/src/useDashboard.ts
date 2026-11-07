@@ -7,11 +7,11 @@
 //    show committed state.
 // 4. Get the selected session when it is selected and when one of its events arrives.
 
-import type { AdminSnapshot, GatewayEvent, PricesResponse, RootsResponse, SessionDetail } from "@anon-credit/protocol";
+import type { AdminSnapshot, GatewayConfigResponse, GatewayEvent, PricesResponse, RootsResponse, SessionDetail } from "@anon-credit/protocol";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { IDLE, type Load } from "./components/common.tsx";
 import type { ProbeResult } from "./components/DemoComparisonPanel.tsx";
-import { fetchPrices, fetchRoots, fetchSession, fetchSnapshot, probePeer, type Connection } from "./lib/api.ts";
+import { fetchConfig, fetchPrices, fetchRoots, fetchSession, fetchSnapshot, probePeer, type Connection } from "./lib/api.ts";
 import { runEventStream } from "./lib/event-stream.ts";
 import type { EventFilter } from "./lib/events-model.ts";
 import { RequestFailure, type FetchLike } from "./lib/http.ts";
@@ -50,6 +50,8 @@ export interface Dashboard {
   readonly runProbe: () => void;
   readonly prices: Load<PricesResponse>;
   readonly roots: Load<RootsResponse>;
+  // The public gateway configuration (the block tag for the demo marker).
+  readonly config: Load<GatewayConfigResponse>;
   readonly loadPublic: () => void;
 }
 
@@ -63,6 +65,7 @@ export function useDashboard(connection: Connection, fetchFn: FetchLike, onGatew
   const [probe, setProbe] = useState<Load<ProbeResult>>(IDLE);
   const [prices, setPrices] = useState<Load<PricesResponse>>(IDLE);
   const [roots, setRoots] = useState<Load<RootsResponse>>(IDLE);
+  const [config, setConfig] = useState<Load<GatewayConfigResponse>>(IDLE);
 
   const detailAbort = useRef<AbortController | null>(null);
   const selectedRef = useRef<string | null>(null);
@@ -218,6 +221,10 @@ export function useDashboard(connection: Connection, fetchFn: FetchLike, onGatew
       (value) => setRoots({ state: "ready", value, at: Date.now() }),
       (error) => setRoots({ state: "failed", error: failureText(error instanceof Error ? error : null) }),
     );
+    fetchConfig(fetchFn, gatewayUrl).then(
+      (value) => setConfig({ state: "ready", value, at: Date.now() }),
+      (error) => setConfig({ state: "failed", error: failureText(error instanceof Error ? error : null) }),
+    );
   }, [fetchFn, gatewayUrl]);
 
   // Read the public price table and roots once for each connection.
@@ -244,6 +251,7 @@ export function useDashboard(connection: Connection, fetchFn: FetchLike, onGatew
     runProbe,
     prices,
     roots,
+    config,
     loadPublic,
   };
 }

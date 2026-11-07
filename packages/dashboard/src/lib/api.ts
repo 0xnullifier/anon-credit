@@ -9,12 +9,14 @@
 import {
   adminSnapshotSchema,
   demoPeerResponseSchema,
+  gatewayConfigResponseSchema,
   hex32TextSchema,
   pricesResponseSchema,
   rootsResponseSchema,
   sessionDetailSchema,
   type AdminSnapshot,
   type DemoPeerResponse,
+  type GatewayConfigResponse,
   type PricesResponse,
   type RootsResponse,
   type SessionDetail,
@@ -27,6 +29,7 @@ export const SESSION_PATH = "/admin/v1/sessions/";
 export const DEMO_PEER_PATH = "/v1/demo/peer";
 export const PRICES_PATH = "/v1/prices";
 export const ROOTS_PATH = "/v1/roots";
+export const CONFIG_PATH = "/v1/config";
 
 // Where the dashboard connects. The token is a secret.
 export interface Connection {
@@ -80,6 +83,11 @@ export function probePeer(fetchFn: FetchLike, gatewayUrl: string, signal: AbortS
 // GET /v1/prices on the public gateway.
 export function fetchPrices(fetchFn: FetchLike, gatewayUrl: string, signal: AbortSignal | null = null): Promise<PricesResponse> {
   return getJson(fetchFn, joinUrl(gatewayUrl, PRICES_PATH), publicInit(signal), pricesResponseSchema, "prices");
+}
+
+// GET /v1/config on the public gateway.
+export function fetchConfig(fetchFn: FetchLike, gatewayUrl: string, signal: AbortSignal | null = null): Promise<GatewayConfigResponse> {
+  return getJson(fetchFn, joinUrl(gatewayUrl, CONFIG_PATH), publicInit(signal), gatewayConfigResponseSchema, "config");
 }
 
 // GET /v1/roots on the public gateway.
