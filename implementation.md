@@ -132,16 +132,24 @@ Use integer Unix seconds and `epoch = floor(timestamp / epoch_seconds)`.
 | Setting | Sepolia testnet deployment | Production |
 |---|---:|---:|
 | Epoch length | 30 seconds | 900 seconds |
-| First-use random delay | 0 to 3 epochs | 0 to 3 epochs |
+| Block tag of the chain readers (`BLOCK_TAG`) | `latest` (demo profile) | `finalized` (default) |
+| First-use random delay | 0 epochs (demo profile, `maxFirstUseDelayEpochs: 0`) | 0 to 3 epochs (SDK default) |
+| First open after a purchase | at most one epoch (30 s) plus chain latency | payment finality, one epoch, and root finality (about 27 minutes on Sepolia), plus the delay |
 | Root window | 96 epochs (48 minutes) | 96 epochs (one day) |
 | Credit activation lifetime | 35,040 epochs (about 12 days) | 35,040 epochs (one year) |
 | Proof epoch acceptance | Current or previous epoch | Current or previous epoch |
 
 The epoch length is a deployment setting, `EPOCH_SECONDS`. The testnet value of 30 seconds gives a fast demo. Epoch counts stay the same in both profiles, so the testnet root window and credit lifetime are shorter in wall-clock time. This is accepted for the demo.
 
-A 30 second epoch does not shorten Sepolia finality. The issuer publishes one root per epoch, so the publisher sends about 2,880 root transactions per day and needs gas for them. A root record becomes acceptable only after its publication transaction is finalized, which takes about 13 minutes on Sepolia. Thus the first open after a purchase still waits for payment finality, root publication, and root finality. After that, each new epoch boundary passes in 30 seconds.
+The issuer sale indexer, the issuer root publisher, and the gateway root source read the chain at one block tag, `BLOCK_TAG`: `finalized` (default), `safe`, or `latest`. A payment or a root publication counts as final when its block is at or below the block of that tag. Both services report the tag in `GET /v1/config`.
 
-The example waits for actual Sepolia finality and epoch boundaries. It must not advance chain time, mine blocks, bypass confirmation, or use a faster local profile. Print progress while waiting. Payment finality, root publication finality, and the random delay can make the run take many minutes; use a configurable overall timeout with a two-hour default.
+With `finalized`, a 30 second epoch does not shorten Sepolia finality. A payment is issued only after its block is finalized, and a root record becomes acceptable only after its publication transaction is finalized. Each wait takes about 13 minutes on Sepolia. Thus the first open after a purchase waits for payment finality, root publication, and root finality (about 27 minutes), plus the random first-use delay. After that, each new epoch boundary passes in 30 seconds.
+
+The testnet demo profile uses `BLOCK_TAG=latest` and no first-use delay. Then the epoch cadence is the only pacing: the issuer issues a payment when its receipt is mined, the root of the insertion epoch is published after that epoch closes, and the gateway accepts the root when `postRoot` is mined. A purchase opens after at most one epoch (30 s) plus chain latency (about two Sepolia blocks) and the poll intervals. **`latest` trades reorg safety for speed.** A reorganization can remove a payment that the issuer already issued, or a root that the gateway already accepted. Use `latest` (and `safe`) only on a testnet. Production uses `finalized`.
+
+The issuer publishes one root per epoch, so the publisher sends about 2,880 root transactions per day and needs gas for them.
+
+The example waits for actual Sepolia blocks and epoch boundaries at the block tag that the services report. It must not advance chain time, mine blocks, or bypass the configured block tag. Print the expected waits and progress while waiting. With `finalized`, payment finality, root publication finality, and the random delay can make the run take many minutes; use a configurable overall timeout with a two-hour default.
 
 For this implementation, **credit expiry is the last epoch in which an unopened batch can be activated**. An activated session has its own public deadline: `open_epoch + 35,040`. It may spend through that deadline. This is an explicit semantic choice; it replaces the draft's ambiguous requirement to enforce a hidden expiry during spending.
 
@@ -161,11 +169,11 @@ The contract sells credit for the issuer. It does not build the MMR or implement
 
 The issuer indexes successful sale events. It must verify the contract address, chain, event contents, receipt status, and canonical block. The client cannot assign commitments to an unrelated transfer.
 
-Wait until the Sepolia transaction block is covered by the RPC's finalized block. If finality data is unavailable, issuance waits and reports the reason. Do not silently replace finality with a fixed number of blocks.
+Wait until the Sepolia transaction block is covered by the RPC's block of `BLOCK_TAG` (`finalized` in production; `latest` in the testnet demo, which trades reorg safety for speed). If the RPC gives no block for the tag, issuance waits and reports the reason. Do not silently replace finality with a fixed number of blocks.
 
 Key each payment by `(chain_id, tx_hash, log_index)`. In one issuer database transaction, record the payment and append each purchased leaf with issuer-computed insertion epoch and expiry. Retrying the same payment returns the existing issuance result. It never creates new leaves.
 
-After an epoch closes, persist a pending root publication, submit it, and reconcile its receipt after restart. `RootRegistry` permits only the issuer to publish. It cannot overwrite a published epoch. The gateway reads finalized roots from that contract independently of the issuer HTTP response.
+After an epoch closes, persist a pending root publication, submit it, and reconcile its receipt after restart. `RootRegistry` permits only the issuer to publish. It cannot overwrite a published epoch. The gateway reads roots from that contract at `BLOCK_TAG` independently of the issuer HTTP response.
 
 ## 8. MMR and circuit statement
 
