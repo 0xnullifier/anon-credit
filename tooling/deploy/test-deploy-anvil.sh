@@ -144,6 +144,9 @@ ENV
     and .demo_ip_logging == true and (.price_table_hash | test("^0x[0-9a-f]{64}$"))
     and (.price_table.units | has("eth_chainId")) and (.accepted_roots | type == "array")
     and .root_window_epochs == 96' "$work/snapshot.json" >/dev/null || fail "admin snapshot fields; see $work/snapshot.json"
+  # The launcher sets the testnet demo block tag when the env file has none.
+  gateway_bind="$(sed -n 's/^GATEWAY_PUBLIC_BIND=//p' "$env_file")"
+  [ "$(curl -fsS "http://$gateway_bind/v1/config" | jq -r .block_tag)" = "latest" ] || fail "the launcher did not set BLOCK_TAG=latest"
   "$repo/tooling/dev/stop-services.sh" "$work/run" || fail "stop-services.sh failed"
   while read -r line; do
     pid="${line#*=}"

@@ -22,6 +22,11 @@
 #      and the admin snapshot with the token. If a check fails, the script stops the processes
 #      that it started and exits 1.
 #
+# Block tag: this launcher is for the testnet demo. If the env file does not set BLOCK_TAG, the
+# launcher sets BLOCK_TAG=latest for the issuer and the gateway: a purchase can open after one
+# epoch plus chain latency, not after Sepolia finality. latest trades reorg safety for speed:
+# testnet only. Set BLOCK_TAG=finalized in the env file to keep the production behavior.
+#
 # Settings (environment, optional):
 #   RUN_DIR                  default data/run/<UTC time>; data/run/latest points to the newest
 #   SERVICES_PROFILE         release (default) or debug
@@ -60,6 +65,16 @@ set -a
 # shellcheck disable=SC1090
 source "$env_file"
 set +a
+
+# The testnet demo profile reads the chain at the latest block (see the header).
+export BLOCK_TAG="${BLOCK_TAG:-latest}"
+case "$BLOCK_TAG" in
+  finalized | safe | latest) ;;
+  *) fail "BLOCK_TAG must be finalized, safe, or latest" ;;
+esac
+if [ "$BLOCK_TAG" != "finalized" ]; then
+  say "BLOCK_TAG=$BLOCK_TAG: reorg safety is traded for speed; use it only on a testnet"
+fi
 
 profile="${SERVICES_PROFILE:-release}"
 case "$profile" in
@@ -208,6 +223,9 @@ wait_ready gateway gateway_ready
 issuer_deployment="$(curl -fsS "$issuer_url/v1/config" | jq -r .deployment_id)"
 gateway_deployment="$(curl -fsS "$gateway_url/v1/config" | jq -r .deployment_id)"
 [ "$issuer_deployment" = "$gateway_deployment" ] || fail "issuer deployment_id $issuer_deployment, gateway $gateway_deployment"
+issuer_tag="$(curl -fsS "$issuer_url/v1/config" | jq -r .block_tag)"
+gateway_tag="$(curl -fsS "$gateway_url/v1/config" | jq -r .block_tag)"
+[ "$issuer_tag" = "$BLOCK_TAG" ] && [ "$gateway_tag" = "$BLOCK_TAG" ] || fail "block tag: issuer $issuer_tag, gateway $gateway_tag, expected $BLOCK_TAG"
 # The token goes to curl in a header file, not on the command line.
 header_file="$(mktemp "$run_dir/.auth.XXXXXX")"
 chmod 600 "$header_file"
@@ -222,6 +240,7 @@ started_ok=1
 echo
 say "all services are ready ($epoch_line)"
 echo "  deployment_id   $gateway_deployment"
+echo "  block tag       $BLOCK_TAG$([ "$BLOCK_TAG" = latest ] && echo ' (testnet demo: no finality wait)')"
 echo "  issuer          $issuer_url        (publish over HTTPS)"
 echo "  gateway public  $gateway_url        (publish over HTTPS)"
 echo "  gateway admin   $admin_url        (private; the dashboard reads it)"
