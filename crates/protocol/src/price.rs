@@ -4,7 +4,7 @@
 //! in ascending byte order at each level:
 //!
 //! ```text
-//! {"units":{"eth_blockNumber":1,"eth_chainId":1,"eth_getBalance":2},"version":1}
+//! {"units":{"eth_blockNumber":1,"eth_call":3,"eth_chainId":1,"eth_getBalance":2,"eth_getTransactionReceipt":2},"version":2}
 //! ```
 //!
 //! - `units` maps each allowed JSON-RPC method name to its units per request.
@@ -20,8 +20,11 @@ use anon_credit_crypto::keccak256;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Version of the initial price table.
+/// Version of the initial price table (three methods).
 pub const INITIAL_PRICE_TABLE_VERSION: u32 = 1;
+
+/// Version of the current price table (five methods). The gateway serves this table.
+pub const PRICE_TABLE_VERSION: u32 = 2;
 
 /// Longest method name in a price table.
 pub const MAX_METHOD_NAME_LEN: usize = 64;
@@ -51,20 +54,41 @@ pub struct PriceTable {
 }
 
 impl PriceTable {
-    /// The initial table: `eth_chainId` 1, `eth_blockNumber` 1, `eth_getBalance` 2.
+    /// The initial table, version 1: `eth_chainId` 1, `eth_blockNumber` 1,
+    /// `eth_getBalance` 2. The gateway does not serve it. It stays for the history of the
+    /// hash.
     pub fn initial() -> Self {
-        let units = [
-            ("eth_chainId", 1),
-            ("eth_blockNumber", 1),
-            ("eth_getBalance", 2),
-        ]
-        .into_iter()
-        .map(|(method, units)| (method.to_owned(), units))
-        .collect();
-        Self {
-            units,
-            version: INITIAL_PRICE_TABLE_VERSION,
-        }
+        Self::from_entries(
+            &[
+                ("eth_chainId", 1),
+                ("eth_blockNumber", 1),
+                ("eth_getBalance", 2),
+            ],
+            INITIAL_PRICE_TABLE_VERSION,
+        )
+    }
+
+    /// The current table, version 2: the initial methods at the same units, and
+    /// `eth_call` 3 and `eth_getTransactionReceipt` 2.
+    pub fn current() -> Self {
+        Self::from_entries(
+            &[
+                ("eth_chainId", 1),
+                ("eth_blockNumber", 1),
+                ("eth_getBalance", 2),
+                ("eth_call", 3),
+                ("eth_getTransactionReceipt", 2),
+            ],
+            PRICE_TABLE_VERSION,
+        )
+    }
+
+    fn from_entries(entries: &[(&str, u32)], version: u32) -> Self {
+        let units = entries
+            .iter()
+            .map(|(method, units)| ((*method).to_owned(), *units))
+            .collect();
+        Self { units, version }
     }
 
     /// Check the method names and values.
@@ -133,12 +157,42 @@ mod tests {
     }
 
     #[test]
-    fn serde_json_form_equals_canonical_form() {
-        let table = PriceTable::initial();
+    fn initial_table_keeps_its_hash() {
         assert_eq!(
-            serde_json::to_string(&table).unwrap(),
-            table.canonical_json()
+            PriceTable::initial().hash().to_hex(),
+            "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f"
         );
+    }
+
+    #[test]
+    fn current_table_has_the_planned_encoding_and_hash() {
+        let table = PriceTable::current();
+        assert_eq!(table.validate(), Ok(()));
+        assert_eq!(
+            table.canonical_json(),
+            r#"{"units":{"eth_blockNumber":1,"eth_call":3,"eth_chainId":1,"eth_getBalance":2,"eth_getTransactionReceipt":2},"version":2}"#
+        );
+        assert_eq!(
+            table.hash().to_hex(),
+            "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08"
+        );
+        assert_eq!(table.units_of("eth_call"), Some(3));
+        assert_eq!(table.units_of("eth_getTransactionReceipt"), Some(2));
+        // The initial methods keep their units.
+        for (method, units) in &PriceTable::initial().units {
+            assert_eq!(table.units_of(method), Some(*units), "{method}");
+        }
+        assert_eq!(table.units_of("eth_getLogs"), None);
+    }
+
+    #[test]
+    fn serde_json_form_equals_canonical_form() {
+        for table in [PriceTable::initial(), PriceTable::current()] {
+            assert_eq!(
+                serde_json::to_string(&table).unwrap(),
+                table.canonical_json()
+            );
+        }
     }
 
     #[test]
