@@ -207,7 +207,7 @@ server {
     server_name rpc.example.org;
     ssl_certificate     /etc/letsencrypt/live/rpc.example.org/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/rpc.example.org/privkey.pem;
-    # Open requests and proof chunks (POST /v1/open, PUT /v1/open/chunks).
+    # Open requests and raw proof chunks (POST /v1/open, PUT /v1/open/chunks/...; 40,000 bytes each).
     client_max_body_size 16m;
     location / {
         proxy_pass http://127.0.0.1:8081;
@@ -286,10 +286,14 @@ batches (remaining, cumulative units, next seq, state, receipt count, proof size
 time), the gateway counters, and the observed source addresses. It has no key, token,
 passphrase, or RPC URL. The run exits nonzero on a failed step or on the timeout.
 
-Note on step 8: Nox refuses request bodies above about 40,000 bytes. The open request carries a
-proof of about 475 KB. The open goes through the chunked proof upload
-(`PUT /v1/open/chunks`, then `POST /v1/open` with the upload reference), which keeps each request
-below the Nox limit. If your gateway build has no chunked upload, the run fails at step 8.
+Note on step 8: Nox refuses request bodies above about 48,000 bytes. The open request carries a
+proof of about 475 KB. The open goes through the chunked proof upload: 8 raw chunks of at most
+40,000 bytes (`PUT /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}`,
+body `application/octet-stream`), 8 at the same time, then `POST /v1/open` with the upload reference.
+Each request stays below the Nox limit. Expect about 5 to 7 s for the upload through Nox
+(measured with `examples/e2e/nox-probe.ts --chunks`). A gateway build with the earlier JSON chunk
+route (`PUT /v1/open/chunks` with base64 data) answers 404 to the new client: deploy the gateway and
+the page from the same commit. If your gateway build has no chunked upload, the run fails at step 8.
 
 ## 8. What you see at each of the 16 steps
 
