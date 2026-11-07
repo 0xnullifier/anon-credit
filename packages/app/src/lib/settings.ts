@@ -40,6 +40,15 @@ function isLocal(url: string): boolean {
   }
 }
 
+function storeFromQuery(): string | null {
+  try {
+    const name = new URLSearchParams(window.location.search).get("store");
+    return name !== null && /^[a-z0-9-]{1,64}$/.test(name) ? name : null;
+  } catch {
+    return null;
+  }
+}
+
 export function defaultSettings(): Settings {
   const gatewayUrl = text(env["VITE_GATEWAY_URL"], "http://127.0.0.1:8081");
   return {
@@ -50,7 +59,8 @@ export function defaultSettings(): Settings {
     prover: "auto",
     bootstrapRpcUrl: text(env["VITE_NOX_BOOTSTRAP_RPC_URL"], ""),
     maxFirstUseDelayEpochs: z.coerce.number().int().min(0).max(3).catch(1).parse(text(env["VITE_MAX_FIRST_USE_DELAY_EPOCHS"], "1")),
-    storageName: text(env["VITE_STORAGE_NAME"], "anon-credit-app"),
+    // ?store=<name> selects another IndexedDB database: a second customer in the same browser.
+    storageName: storeFromQuery() ?? text(env["VITE_STORAGE_NAME"], "anon-credit-app"),
   };
 }
 

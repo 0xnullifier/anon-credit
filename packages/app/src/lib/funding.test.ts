@@ -27,3 +27,13 @@ describe("shortfallWei", () => {
     expect(shortfallWei(0n, cost)).toBe(cost.totalWei);
   });
 });
+
+describe("eth format", () => {
+  it("shows small values in gwei and larger values in ETH", async () => {
+    const { eth } = await import("./format.ts");
+    expect(eth(0n)).toBe("0 ETH");
+    expect(eth(123_456_789n)).toBe("0.123 gwei");
+    expect(eth(100_000_000_000_000n)).toBe("0.0001 ETH");
+    expect(eth(10n ** 18n)).toBe("1 ETH");
+  });
+});

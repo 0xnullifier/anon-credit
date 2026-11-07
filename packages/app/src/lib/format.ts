@@ -43,8 +43,10 @@ export function bytes(count: number): string {
   }
 }
 
-// Wei as ETH with up to 6 decimals, without trailing zeros.
+// Wei as ETH with up to 6 decimals, without trailing zeros. A value below 0.000001 ETH is
+// shown in gwei, so a gas estimate is never "0 ETH".
 export function eth(wei: bigint): string {
+  if (wei > 0n && wei < 10n ** 12n) return `${(Number(wei) / 1e9).toFixed(3).replace(/\.?0+$/, "")} gwei`;
   const whole = wei / 10n ** 18n;
   const fraction = (wei % 10n ** 18n).toString().padStart(18, "0").slice(0, 6).replace(/0+$/, "");
   return fraction === "" ? `${whole} ETH` : `${whole}.${fraction} ETH`;
