@@ -60,7 +60,7 @@ Testnet profile: 30 s epochs, 0.0001 ETH per batch of 100 units, chain reads at 
 | `packages/prover` | Browser prover on the pinned ProveKit WASM build |
 | `packages/sdk` | Client: purchase, state, open, spend, backup |
 | `packages/anon-transport` | Nox transport wrapper and the direct fallback |
-| `packages/app` | Customer web app: buy, wait, open, spend |
+| `packages/app` | Customer web app: buy, wait, open, spend ([README](packages/app/README.md)) |
 | `packages/dashboard` | Operator dashboard on the live event stream |
 | `examples/e2e` | Sepolia end-to-end run and the local integration harness |
 | `fixtures/protocol` | Cross-language test vectors |
