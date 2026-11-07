@@ -183,7 +183,7 @@ pub fn check_call_object(call: &Map<String, Value>) -> Result<(), RpcRejection> 
         }
     }
     if !call.contains_key("to") {
-        return Err(RpcRejection::Invalid("eth_call object needs to"));
+        return Err(RpcRejection::Invalid("eth_call object needs a to address"));
     }
     if call.contains_key("data") && call.contains_key("input") {
         return Err(RpcRejection::Invalid(
