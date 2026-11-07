@@ -123,6 +123,7 @@ async function setupPage(setup: SetupRequest): Promise<Json> {
     passphrase: setup.passphrase,
     proverManifestSha256: setup.manifestSha256,
     firstUseDelayEpochs: setup.firstUseDelayEpochs,
+    maxFirstUseDelayEpochs: setup.maxFirstUseDelayEpochs,
     pollMs: setup.pollMs,
     eligibleTimeoutMs: setup.eligibleTimeoutMs,
     onOpenProgress: (item) =>

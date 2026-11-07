@@ -264,6 +264,7 @@ export async function preflight(config: SepoliaConfig, deps: PreflightDeps = def
     add("payment chain is Sepolia", issuer.deployment.payment_chain_id === SEPOLIA_CHAIN_ID, String(issuer.deployment.payment_chain_id));
     add("gateway upstream chain is Sepolia", gateway.upstream_chain_id === SEPOLIA_CHAIN_ID, String(gateway.upstream_chain_id));
     add("local prover manifest is the pinned manifest", issuer.deployment.prover_manifest_hash === manifestSha256, manifestSha256);
+    add("gateway and issuer block tag agree", gateway.block_tag === issuer.block_tag, `block tag ${issuer.block_tag}`);
     add("deployment_id is the pinned E2E_DEPLOYMENT_ID",
       config.deploymentId === undefined || config.deploymentId === issuer.deployment_id,
       config.deploymentId === undefined ? "not pinned" : config.deploymentId);
@@ -273,6 +274,7 @@ export async function preflight(config: SepoliaConfig, deps: PreflightDeps = def
       saleAddress: issuer.deployment.sale_address,
       rootRegistryAddress: issuer.deployment.root_registry_address,
       epochSeconds: issuer.deployment.epoch_seconds,
+      blockTag: issuer.block_tag,
       batchPriceWei: issuer.batch_price_wei,
       proverManifestHash: issuer.deployment.prover_manifest_hash,
       gatewayUrl: new URL(config.gatewayUrl).origin,

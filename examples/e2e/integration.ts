@@ -271,6 +271,7 @@ async function main(): Promise<number> {
         eligibleTimeoutMs: 300_000,
       },
       preflight: async () => {
+        maxFirstUseDelayEpochs: 0,
         const gatewayConfig = await getJson(`${gatewayUrl}/v1/config`, gatewayConfigResponseSchema);
         const issuerConfig = await getJson(`${issuerUrl}/v1/config`, issuerConfigResponseSchema);
         const health = await getJson(`http://127.0.0.1:${sidecarPort}/health`, z.object({ pkv_sha256: z.string(), witness_mode: z.string() }));

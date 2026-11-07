@@ -2,8 +2,14 @@
 //
 // The full run: preflight (step 1); stop before the purchase if a check fails. Then the shared
 // step list in headless Chromium with the Nox transport, a real Sepolia purchase from the
-// runner's test wallet, real finality waits with progress lines, and a sanitized result file.
-// The run exits nonzero on a failed step or on the timeout (default two hours).
+// runner's test wallet, the chain waits of the reported block tag with progress lines, and a
+// sanitized result file. The run exits nonzero on a failed step or on the timeout (default
+// two hours).
+//
+// The waits follow the block tag of GET /v1/config (src/pacing.ts). With BLOCK_TAG=latest (the
+// testnet demo), the run has no finality wait and no first-use delay: a purchase opens after
+// the current epoch closes plus chain latency. With finalized, each chain wait is about 13
+// minutes.
 
 import { randomBytes } from "node:crypto";
 import { chromium, type Browser } from "playwright-core";
@@ -13,6 +19,7 @@ import { findChromium } from "./chromium.ts";
 import { pageCaller } from "./page-driver.ts";
 import { MANIFEST_PATH, startPageServer, type PageServer } from "./page-server.ts";
 import { writeResult, type Json, type RunResult } from "./result.ts";
+import { pacingFor } from "./pacing.ts";
 import { runScenario } from "./scenario.ts";
 import { ConfigError, defaultPreflightDeps, preflight, readSepoliaConfig, type PreflightDeps, type PreflightReport } from "./sepolia.ts";
 
@@ -56,6 +63,10 @@ export async function runSepolia(argv: readonly string[], env: Readonly<Record<s
   }
   const issuer = report.issuerConfig;
   if (issuer === null) return 1;
+  const pacing = pacingFor(issuer.block_tag, issuer.deployment.epoch_seconds);
+  log(`block tag ${pacing.blockTag}${pacing.blockTag === "latest" ? " (testnet demo: reorg safety traded for speed)" : ""}; expected waits:`);
+  log(`  ${pacing.issuanceWait}`);
+  log(`  ${pacing.rootWait}`);
 
   const startedAt = new Date();
   const passphrase = randomBytes(18).toString("base64");
@@ -81,6 +92,7 @@ export async function runSepolia(argv: readonly string[], env: Readonly<Record<s
       call: pageCaller(tab),
       log,
       testAddress: config.testAddress,
+      rootWait: pacing.rootWait,
       setup: {
         gatewayUrl: config.gatewayUrl,
         issuerUrl: config.issuerUrl,
@@ -92,7 +104,8 @@ export async function runSepolia(argv: readonly string[], env: Readonly<Record<s
         proverMode: config.proverMode,
         passphrase,
         firstUseDelayEpochs: "random",
-        pollMs: 15_000,
+        maxFirstUseDelayEpochs: pacing.maxFirstUseDelayEpochs,
+        pollMs: pacing.eligiblePollMs,
         eligibleTimeoutMs: remaining(),
       },
       preflight: async () => {
@@ -109,9 +122,9 @@ export async function runSepolia(argv: readonly string[], env: Readonly<Record<s
       waitIssuance: async (purchase) => {
         const issuerHttp = { issuerUrl: config.issuerUrl };
         await registerTopup(issuerHttp, purchase.txHash, purchase.logIndex);
-        log("waiting for Sepolia finality of the payment (about 13 minutes)");
+        log(`waiting for the issuance; ${pacing.issuanceWait}`);
         return waitForIssuance(issuerHttp, purchase.txHash, purchase.logIndex, {
-          pollMs: 15_000,
+          pollMs: pacing.issuancePollMs,
           timeoutMs: remaining(),
           onProgress: (topup) =>
             log(`topup ${topup.status}${topup.pending_reason === null ? "" : ` (${topup.pending_reason})`}, block ${topup.block_number ?? "?"}, finalized ${topup.finalized_block ?? "?"}`),

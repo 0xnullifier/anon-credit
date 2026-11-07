@@ -21,6 +21,9 @@ export const setupRequestSchema = z.strictObject({
   proverMode: z.enum(["auto", "scalar", "threaded"]),
   passphrase: z.string().min(8),
   firstUseDelayEpochs: z.union([z.number().int().min(0).max(3), z.literal("random")]),
+  // Largest first-use delay in epochs. 0 for the testnet demo profile (BLOCK_TAG=latest),
+  // 3 for production (src/pacing.ts).
+  maxFirstUseDelayEpochs: z.number().int().min(0).max(3),
   pollMs: z.number().int().positive(),
   eligibleTimeoutMs: z.number().int().positive(),
 });

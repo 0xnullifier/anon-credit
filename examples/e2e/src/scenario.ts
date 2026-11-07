@@ -44,6 +44,8 @@ export interface ScenarioOptions {
   // A fixed public test address that is not the payer.
   readonly testAddress: string;
   readonly log: (line: string) => void;
+  // Step 5: a progress line with the expected wait for an eligible root (src/pacing.ts).
+  readonly rootWait?: string;
 }
 
 export interface ScenarioOutcome {
@@ -168,6 +170,7 @@ export async function runScenario(options: ScenarioOptions): Promise<ScenarioOut
   });
 
   await step(5, async () => {
+    if (options.rootWait !== undefined) options.log(`waiting for an eligible root; ${options.rootWait}`);
     const eligible = await call({ op: "waitEligible", batchId: id(0) }, eligibleValueSchema);
     return { rootSourceEpoch: eligible.sourceEpoch, leafCount: eligible.leafCount, delayEpochs: eligible.delayEpochs, waitMs: Math.round(eligible.waitedMs) };
   });
