@@ -4,13 +4,15 @@
     "table": {
       "units": {
         "eth_blockNumber": 1,
+        "eth_call": 3,
         "eth_chainId": 1,
-        "eth_getBalance": 2
+        "eth_getBalance": 2,
+        "eth_getTransactionReceipt": 2
       },
-      "version": 1
+      "version": 2
     },
-    "canonical_json": "{\"units\":{\"eth_blockNumber\":1,\"eth_chainId\":1,\"eth_getBalance\":2},\"version\":1}",
-    "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f"
+    "canonical_json": "{\"units\":{\"eth_blockNumber\":1,\"eth_call\":3,\"eth_chainId\":1,\"eth_getBalance\":2,\"eth_getTransactionReceipt\":2},\"version\":2}",
+    "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08"
   },
   "spend_response_headers": [
     "x-anon-remaining",
@@ -116,9 +118,9 @@
       "leaf_count": 1,
       "proof_epoch": "1005",
       "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-      "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+      "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
       "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
-      "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
+      "signature": "qTVAHJjZExtv/vIzTHnfZA35SDVGPqLYVyS2IMprF0D+Et3HvK1rkILg8owWHvR2PaxC/OJoYbW2k4LZOlicAA=="
     },
     "open_request_upload": {
       "protocol_version": 1,
@@ -129,13 +131,13 @@
       "leaf_count": 1,
       "proof_epoch": "1005",
       "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-      "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+      "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
       "proof_upload": {
         "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
         "total_bytes": 19,
         "proof_encoding": "json"
       },
-      "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
+      "signature": "qTVAHJjZExtv/vIzTHnfZA35SDVGPqLYVyS2IMprF0D+Et3HvK1rkILg8owWHvR2PaxC/OJoYbW2k4LZOlicAA=="
     },
     "open_chunk_path": {
       "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
@@ -152,7 +154,7 @@
       "session": {
         "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "remaining": 100,
         "units_total": "0",
         "next_seq": "0",
@@ -182,7 +184,7 @@
       "session": {
         "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "remaining": 99,
         "units_total": "1",
         "next_seq": "1",
@@ -205,7 +207,7 @@
       "session": {
         "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "remaining": 100,
         "units_total": "0",
         "next_seq": "0",
@@ -249,7 +251,7 @@
       "root_window_epochs": 96,
       "session_lifetime_epochs": 35040,
       "batch_size": 100,
-      "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+      "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
       "limits": {
         "open_body_bytes": 16777216,
         "spend_body_bytes": 65536,
@@ -271,14 +273,16 @@
       "block_tag": "finalized"
     },
     "prices_response": {
-      "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+      "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
       "price_table": {
         "units": {
           "eth_blockNumber": 1,
+          "eth_call": 3,
           "eth_chainId": 1,
-          "eth_getBalance": 2
+          "eth_getBalance": 2,
+          "eth_getTransactionReceipt": 2
         },
-        "version": 1
+        "version": 2
       }
     },
     "roots_response": {
@@ -348,14 +352,16 @@
         "circuit_id": "0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e",
         "witness_mode": "zk"
       },
-      "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+      "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
       "price_table": {
         "units": {
           "eth_blockNumber": 1,
+          "eth_call": 3,
           "eth_chainId": 1,
-          "eth_getBalance": 2
+          "eth_getBalance": 2,
+          "eth_getTransactionReceipt": 2
         },
-        "version": 1
+        "version": 2
       },
       "roots": {
         "accepted": 1,
@@ -414,7 +420,7 @@
           "session": {
             "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
             "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-            "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+            "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
             "remaining": 99,
             "units_total": "1",
             "next_seq": "1",
@@ -433,7 +439,7 @@
         "session": {
           "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
           "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-          "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+          "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
           "remaining": 99,
           "units_total": "1",
           "next_seq": "1",
@@ -473,7 +479,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg==",
         "extra": 1
@@ -491,7 +497,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ=="
       }
     },
@@ -507,7 +513,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
       }
@@ -524,7 +530,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0x11111111111111111111111111111111111111111111111111111111111111",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
       }
@@ -541,7 +547,7 @@
         "leaf_count": 1,
         "proof_epoch": 1005,
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
       }
@@ -558,7 +564,7 @@
         "leaf_count": 1,
         "proof_epoch": "01005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
       }
@@ -575,7 +581,7 @@
         "leaf_count": 1,
         "proof_epoch": "18446744073709551616",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
       }
@@ -592,7 +598,7 @@
         "leaf_count": 4294967296,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
       }
@@ -609,7 +615,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
       }
@@ -626,7 +632,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
       }
@@ -723,7 +729,7 @@
         "session": {
           "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
           "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-          "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+          "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
           "remaining": 100,
           "units_total": "0",
           "next_seq": "0",
@@ -741,7 +747,7 @@
         "session": {
           "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
           "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-          "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+          "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
           "remaining": 99,
           "units_total": "1",
           "next_seq": "1",
@@ -844,14 +850,16 @@
           "circuit_id": "0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e",
           "witness_mode": "zk"
         },
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "price_table": {
           "units": {
             "eth_blockNumber": 1,
+            "eth_call": 3,
             "eth_chainId": 1,
-            "eth_getBalance": 2
+            "eth_getBalance": 2,
+            "eth_getTransactionReceipt": 2
           },
-          "version": 1
+          "version": 2
         },
         "roots": {
           "accepted": 1,
@@ -910,7 +918,7 @@
             "session": {
               "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
               "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-              "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+              "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
               "remaining": 99,
               "units_total": "1",
               "next_seq": "1",
@@ -934,7 +942,7 @@
           "session": {
             "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
             "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-            "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+            "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
             "remaining": 99,
             "units_total": "1",
             "next_seq": "1",
@@ -980,14 +988,16 @@
           "circuit_id": "0x00000000000000616e6f6e2d6372656469742f76312f62617463682d6f70656e",
           "witness_mode": "zk"
         },
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "price_table": {
           "units": {
             "eth_blockNumber": 1,
+            "eth_call": 3,
             "eth_chainId": 1,
-            "eth_getBalance": 2
+            "eth_getBalance": 2,
+            "eth_getTransactionReceipt": 2
           },
-          "version": 1
+          "version": 2
         },
         "roots": {
           "accepted": 1,
@@ -1046,7 +1056,7 @@
             "session": {
               "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
               "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-              "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+              "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
               "remaining": 99,
               "units_total": "1",
               "next_seq": "1",
@@ -1084,10 +1094,12 @@
         "price_table": {
           "units": {
             "eth_blockNumber": 1,
+            "eth_call": 3,
             "eth_chainId": 1,
-            "eth_getBalance": 2
+            "eth_getBalance": 2,
+            "eth_getTransactionReceipt": 2
           },
-          "version": 1
+          "version": 2
         },
         "roots": {
           "accepted": 1,
@@ -1146,7 +1158,7 @@
             "session": {
               "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
               "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-              "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+              "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
               "remaining": 99,
               "units_total": "1",
               "next_seq": "1",
@@ -1173,7 +1185,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg==",
         "proof_upload": {
@@ -1195,7 +1207,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
       }
     },
@@ -1211,7 +1223,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof_upload": {
           "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
           "total_bytes": 19,
@@ -1232,7 +1244,7 @@
         "leaf_count": 1,
         "proof_epoch": "1005",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "proof_upload": {
           "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
           "total_bytes": 19,

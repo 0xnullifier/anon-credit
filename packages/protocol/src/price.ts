@@ -1,7 +1,7 @@
 // Price table and price_table_hash. The rules are the same as crates/protocol/src/price.rs.
 //
 // Canonical encoding: compact UTF-8 JSON, no white space, object keys in ascending byte order:
-//   {"units":{"eth_blockNumber":1,"eth_chainId":1,"eth_getBalance":2},"version":1}
+//   {"units":{"eth_blockNumber":1,"eth_call":3,"eth_chainId":1,"eth_getBalance":2,"eth_getTransactionReceipt":2},"version":2}
 // Method names have 1 to 64 characters from A-Z, a-z, 0-9, and "_". Thus no name needs an escape.
 // price_table_hash = keccak256(canonical encoding).
 
@@ -20,10 +20,17 @@ export const priceTableSchema = z.strictObject({
 
 export type PriceTable = z.output<typeof priceTableSchema>;
 
-// The initial table of the first deployment.
+// The initial table, version 1. The gateway does not serve it. It stays for the history of the hash.
 export const INITIAL_PRICE_TABLE: PriceTable = {
   units: { eth_blockNumber: 1, eth_chainId: 1, eth_getBalance: 2 },
   version: 1,
+};
+
+// The current table, version 2: the initial methods at the same units, eth_call 3, and
+// eth_getTransactionReceipt 2. The gateway serves this table (PriceTable::current() in Rust).
+export const CURRENT_PRICE_TABLE: PriceTable = {
+  units: { eth_blockNumber: 1, eth_call: 3, eth_chainId: 1, eth_getBalance: 2, eth_getTransactionReceipt: 2 },
+  version: 2,
 };
 
 // Compare two ASCII strings in byte order.

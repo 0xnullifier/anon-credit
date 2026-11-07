@@ -8,7 +8,7 @@ import { PrivacyPanel, priceHashMatches, sameRoots, verifierKeyMatches } from ".
 describe("PrivacyPanel", () => {
   it("checks the price table hash against the canonical encoding", () => {
     expect(priceHashMatches(sharedPrices)).toBe(true);
-    const changed = { ...sharedPrices, price_table: { ...sharedPrices.price_table, version: 2 } };
+    const changed = { ...sharedPrices, price_table: { ...sharedPrices.price_table, version: sharedPrices.price_table.version + 1 } };
     expect(priceHashMatches(changed)).toBe(false);
   });
 
@@ -23,6 +23,8 @@ describe("PrivacyPanel", () => {
     );
     expect(html).toContain("matches the canonical encoding");
     expect(html).toContain("eth_getBalance");
+    expect(html).toContain("eth_call");
+    expect(html).toContain("eth_getTransactionReceipt");
     expect(html).toContain(sharedSnapshot.verifier.pkv_sha256.slice(0, 8));
     expect(html).toContain("1 accepted roots in a window of 96 source epochs");
     expect(html).toContain("evidence of routing");

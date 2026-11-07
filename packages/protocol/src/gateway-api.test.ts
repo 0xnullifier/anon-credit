@@ -29,7 +29,7 @@ import {
   statusResponseSchema,
 } from "./gateway-api.ts";
 import { openMessageDigest } from "./open.ts";
-import { canonicalPriceTableJson, INITIAL_PRICE_TABLE, priceTableHash, priceTableSchema } from "./price.ts";
+import { canonicalPriceTableJson, CURRENT_PRICE_TABLE, INITIAL_PRICE_TABLE, priceTableHash, priceTableSchema } from "./price.ts";
 import { decodeBase64, encodeBase64, isCanonicalBase64 } from "./wire.ts";
 
 const fileSchema = z.object({
@@ -164,13 +164,27 @@ describe("gateway api shared examples", () => {
 
 describe("price table", () => {
   it("matches the shared canonical encoding and hash", () => {
-    expect(file.price_table.table).toEqual(INITIAL_PRICE_TABLE);
+    expect(file.price_table.table).toEqual(CURRENT_PRICE_TABLE);
     expect(canonicalPriceTableJson(file.price_table.table)).toBe(file.price_table.canonical_json);
     expect(encodeHex(priceTableHash(file.price_table.table))).toBe(file.price_table.price_table_hash);
+    expect(file.price_table.canonical_json).toBe(
+      '{"units":{"eth_blockNumber":1,"eth_call":3,"eth_chainId":1,"eth_getBalance":2,"eth_getTransactionReceipt":2},"version":2}',
+    );
+    expect(file.price_table.price_table_hash).toBe("0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08");
+  });
+
+  it("keeps the initial methods at their units and the version 1 hash", () => {
+    for (const [method, units] of Object.entries(INITIAL_PRICE_TABLE.units)) {
+      expect(CURRENT_PRICE_TABLE.units[method]).toBe(units);
+    }
+    expect(encodeHex(priceTableHash(INITIAL_PRICE_TABLE))).toBe("0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f");
   });
 
   it("sorts keys in byte order", () => {
-    const table = { units: { eth_getBalance: 2, eth_chainId: 1, eth_blockNumber: 1 }, version: 1 };
+    const table = {
+      units: { eth_getTransactionReceipt: 2, eth_getBalance: 2, eth_chainId: 1, eth_call: 3, eth_blockNumber: 1 },
+      version: 2,
+    };
     expect(canonicalPriceTableJson(table)).toBe(file.price_table.canonical_json);
   });
 

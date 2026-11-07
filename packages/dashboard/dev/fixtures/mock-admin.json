@@ -27,7 +27,7 @@
       "session": {
         "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
         "session_pub": "0xd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "remaining": 100,
         "units_total": "0",
         "next_seq": "0",
@@ -43,7 +43,7 @@
       "session": {
         "batch_id": "0x1b6d0c2f8e4a9137c5d2e0f6a8b3c9d1e7f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
         "session_pub": "0x3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
-        "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+        "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
         "remaining": 100,
         "units_total": "0",
         "next_seq": "0",
@@ -57,14 +57,16 @@
     }
   ],
   "prices": {
-    "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",
+    "price_table_hash": "0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08",
     "price_table": {
       "units": {
         "eth_blockNumber": 1,
+        "eth_call": 3,
         "eth_chainId": 1,
-        "eth_getBalance": 2
+        "eth_getBalance": 2,
+        "eth_getTransactionReceipt": 2
       },
-      "version": 1
+      "version": 2
     }
   },
   "roots": {

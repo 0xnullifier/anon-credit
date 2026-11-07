@@ -253,7 +253,7 @@ fn invalid_api_examples_fail() {
 #[test]
 fn price_table_matches_shared_vector() {
     let file: ApiFile = serde_json::from_str(API).unwrap();
-    assert_eq!(file.price_table.table, PriceTable::initial());
+    assert_eq!(file.price_table.table, PriceTable::current());
     assert_eq!(
         file.price_table.table.canonical_json(),
         file.price_table.canonical_json
