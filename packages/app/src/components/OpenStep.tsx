@@ -128,6 +128,8 @@ export function OpenStep({
         case "open":
           switch (event.phase) {
             case "sent":
+              // The chunks are all acknowledged when the open request goes out.
+              if (get(IDS.upload).state === "running") set(finishStep(get(IDS.upload), event.atMs, ["all chunks acknowledged; waiting for the open response"]));
               set(startStep(get(IDS.open), event.atMs, [`POST /v1/open${event.bodyBytes === null ? "" : ` (${bytes(event.bodyBytes)})`} on isolation key ${event.isolationKey.slice(0, 20)}…`]));
               return;
             case "answered":
@@ -203,10 +205,11 @@ export function OpenStep({
       }
       const openMs = performance.now() - start;
       const stats = outcome.upload;
+      const uploadStep = get(IDS.upload);
       set(
         finishStep(
-          get(IDS.upload),
-          Date.now(),
+          uploadStep,
+          uploadStep.endedAt ?? Date.now(),
           stats === null
             ? [`inline: the proof went inside POST /v1/open (${workbench.transport.kind} transport, no body limit)`]
             : [

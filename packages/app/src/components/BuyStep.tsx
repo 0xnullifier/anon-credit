@@ -101,11 +101,12 @@ export function BuyStep({
     const fresh = initialSteps();
     setSteps(fresh);
     setTxHash(null);
-    const [commit, sign, mine] = fresh;
+    let [commit, sign, mine] = fresh;
     if (commit === undefined || sign === undefined || mine === undefined) return;
     let made: readonly { readonly batchId: string; readonly commitment: string }[];
     try {
-      update(startStep(commit, Date.now()));
+      commit = startStep(commit, Date.now());
+      update(commit);
       made = await workbench.client.createBatches(count);
       setCommitments(made);
       update(
@@ -120,7 +121,8 @@ export function BuyStep({
     }
     let hash: `0x${string}`;
     try {
-      update(startStep(sign, Date.now(), [`value ${eth(price * BigInt(made.length))} to ${deployment.sale_address}`]));
+      sign = startStep(sign, Date.now(), [`value ${eth(price * BigInt(made.length))} to ${deployment.sale_address}`]);
+      update(sign);
       hash = await sendBuy(payer, deployment.sale_address, made.map((batch) => batch.commitment), price);
       setTxHash(hash);
       update(finishStep(sign, Date.now(), [`tx ${hash}`]));
@@ -129,7 +131,8 @@ export function BuyStep({
       return;
     }
     try {
-      update(startStep(mine, Date.now(), ["waiting for the receipt"]));
+      mine = startStep(mine, Date.now(), ["waiting for the receipt"]);
+      update(mine);
       const purchase = await waitForPurchase(payer, deployment.sale_address, hash);
       update(
         finishStep(mine, Date.now(), [

@@ -665,6 +665,16 @@ table.inputs td.value {
 
 .ledger .kv {
   margin: 0;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.ledger .kv dt {
+  margin-top: 8px;
+}
+
+.ledger .kv dt:first-child {
+  margin-top: 0;
 }
 
 @media (max-width: 700px) {
