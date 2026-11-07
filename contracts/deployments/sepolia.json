@@ -1,0 +1,22 @@
+{
+  "network": "sepolia",
+  "chain_id": 11155111,
+  "deployed_at": "2026-11-07T01:20:18Z",
+  "git_commit": "edb23a3bd435041d9cdfbbee309ecb22891c067b",
+  "deployer": "0xaf2ad5789a697a927cdd7cadb84b4fe7da199e95",
+  "issuer_address": "0xaf2ad5789a697a927cdd7cadb84b4fe7da199e95",
+  "batch_price_wei": "100000000000000",
+  "epoch_seconds": 30,
+  "credit_sale": {
+    "address": "0x121f911867ac81aeba7d41ddfbfadec2a1787acb",
+    "deploy_tx": "0xaa99a26b104f234a89ce28f7ccb17578f7ce890c8abda2b1f17ce6e5e28d83e6",
+    "block_number": 12080365,
+    "verified": false
+  },
+  "root_registry": {
+    "address": "0xa7804062bfe4b4205b8597a477e3b039981fb7e8",
+    "deploy_tx": "0x172dff444e53fc18c612ff1b3a467f3ceddeb203d49318412a06ebdd2ffb721e",
+    "block_number": 12080365,
+    "verified": false
+  }
+}
