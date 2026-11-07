@@ -1,0 +1,30 @@
+{
+  "name": "@anon-credit/app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Customer app: buy credit, prove, open, and spend in the browser.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5175",
+    "dev:stack": "node dev/stack.ts",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json && tsc -p dev/tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@anon-credit/anon-transport": "workspace:*",
+    "@anon-credit/protocol": "workspace:*",
+    "@anon-credit/prover": "workspace:*",
+    "@anon-credit/sdk": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "viem": "2.57.11",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "vite": "8.3.6"
+  }
+}
