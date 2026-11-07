@@ -1,12 +1,13 @@
-// Step 1: connect a wallet and buy N batches. The commitments are made in the browser; the
-// transaction carries only them.
+// Step 1: buy N batches with the connected signer. The commitments are made in the browser; the
+// transaction carries only them. The buy button stays off while the balance is short, with the
+// exact shortfall from the last balance and gas price reads.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { explainLine } from "../lib/explain.ts";
 import { chainName, eth, explorerTx } from "../lib/format.ts";
-import { devPayer } from "../lib/settings.ts";
+import { purchaseCost, shortfallWei } from "../lib/funding.ts";
 import { failStep, finishStep, noteStep, pendingStep, replaceStep, startStep, type StepRecord } from "../lib/tracker.ts";
-import { connectDevKey, connectInjected, readBalance, readBatchPrice, sendBuy, waitForPurchase, type Payer, type PayerKind } from "../lib/wallet.ts";
+import { readBatchPrice, readGasPrice, sendBuy, waitForPurchase, type Signer } from "../lib/wallet.ts";
 import type { Workbench } from "../lib/workbench.ts";
 import { Hex, Kv, Section, StepLines, type SectionState } from "./primitives.tsx";
 
@@ -24,7 +25,7 @@ const STEP_IDS = { commit: "commit", sign: "sign", mine: "mine" } as const;
 function initialSteps(): StepRecord[] {
   return [
     pendingStep(STEP_IDS.commit, "make batch secrets and commitments in the browser"),
-    pendingStep(STEP_IDS.sign, "wallet signs CreditSale.buy(commitments)"),
+    pendingStep(STEP_IDS.sign, "signer signs CreditSale.buy(commitments)"),
     pendingStep(STEP_IDS.mine, "transaction mined, Purchased event read"),
   ];
 }
@@ -42,26 +43,77 @@ function sectionState(steps: readonly StepRecord[]): SectionState {
   }
 }
 
+function signWords(signer: Signer): string {
+  switch (signer.kind) {
+    case "injected":
+      return `${signer.name} signs with eth_sendTransaction`;
+    case "local":
+      return "the local key signs in this browser and broadcasts over the configured RPC";
+    case "dev":
+      return "the dev key signs in this browser and broadcasts over the configured RPC";
+  }
+}
+
 export function BuyStep({
   workbench,
+  signer,
+  balance,
   now,
+  onOpenWallet,
   onPurchase,
+  onBalanceChange,
 }: {
   readonly workbench: Workbench | null;
+  readonly signer: Signer | null;
+  readonly balance: bigint | null;
   readonly now: number;
+  readonly onOpenWallet: () => void;
   readonly onPurchase: (purchase: PurchaseRecord) => void;
+  // Ask for a new balance read (after a purchase).
+  readonly onBalanceChange: () => void;
 }) {
-  const dev = devPayer();
-  const [kind, setKind] = useState<PayerKind>("injected");
-  const [payer, setPayer] = useState<Payer | null>(null);
-  const [balance, setBalance] = useState<bigint | null>(null);
   const [price, setPrice] = useState<bigint | null>(null);
-  const [connectError, setConnectError] = useState("");
+  const [gasPrice, setGasPrice] = useState<bigint | null>(null);
+  const [readError, setReadError] = useState("");
   const [count, setCount] = useState(1);
   const [steps, setSteps] = useState<StepRecord[]>(initialSteps);
   const [commitments, setCommitments] = useState<readonly { readonly batchId: string; readonly commitment: string }[]>([]);
   const [txHash, setTxHash] = useState<string | null>(null);
   const busy = steps.some((step) => step.state === "running");
+
+  // Price and gas price through the signer's RPC; the gas price again every 10 s.
+  useEffect(() => {
+    setPrice(null);
+    setGasPrice(null);
+    setReadError("");
+    if (workbench === null || signer === null) return;
+    let stopped = false;
+    const sale = workbench.client.deployment.sale_address;
+    readBatchPrice(signer, sale).then(
+      (value) => {
+        if (!stopped) setPrice(value);
+      },
+      (error) => {
+        if (!stopped) setReadError(explainLine(error));
+      },
+    );
+    const readGas = (): void => {
+      readGasPrice(signer).then(
+        (value) => {
+          if (!stopped) setGasPrice(value);
+        },
+        (error) => {
+          if (!stopped) setReadError(explainLine(error));
+        },
+      );
+    };
+    readGas();
+    const timer = setInterval(readGas, 10_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [workbench, signer]);
 
   if (workbench === null) {
     return (
@@ -72,32 +124,10 @@ export function BuyStep({
   }
   const deployment = workbench.client.deployment;
 
-  const connect = async (): Promise<void> => {
-    setConnectError("");
-    try {
-      let next: Payer;
-      switch (kind) {
-        case "injected":
-          next = await connectInjected(deployment.payment_chain_id);
-          break;
-        case "dev-key":
-          if (dev === null) throw new Error("this build has no development payer");
-          next = await connectDevKey(dev.privateKey, dev.rpcUrl, deployment.payment_chain_id);
-          break;
-      }
-      setPayer(next);
-      setBalance(await readBalance(next));
-      setPrice(await readBatchPrice(next, deployment.sale_address));
-    } catch (error) {
-      setPayer(null);
-      setConnectError(explainLine(error));
-    }
-  };
-
   const update = (next: StepRecord): void => setSteps((list) => replaceStep(list, next));
 
   const buy = async (): Promise<void> => {
-    if (payer === null || price === null) return;
+    if (signer === null || price === null) return;
     const fresh = initialSteps();
     setSteps(fresh);
     setTxHash(null);
@@ -121,9 +151,9 @@ export function BuyStep({
     }
     let hash: `0x${string}`;
     try {
-      sign = startStep(sign, Date.now(), [`value ${eth(price * BigInt(made.length))} to ${deployment.sale_address}`]);
+      sign = startStep(sign, Date.now(), [`value ${eth(price * BigInt(made.length))} to ${deployment.sale_address}`, signWords(signer)]);
       update(sign);
-      hash = await sendBuy(payer, deployment.sale_address, made.map((batch) => batch.commitment), price);
+      hash = await sendBuy(signer, deployment.sale_address, made.map((batch) => batch.commitment), price);
       setTxHash(hash);
       update(finishStep(sign, Date.now(), [`tx ${hash}`]));
     } catch (error) {
@@ -133,19 +163,19 @@ export function BuyStep({
     try {
       mine = startStep(mine, Date.now(), ["waiting for the receipt"]);
       update(mine);
-      const purchase = await waitForPurchase(payer, deployment.sale_address, hash);
+      const purchase = await waitForPurchase(signer, deployment.sale_address, hash);
       update(
         finishStep(mine, Date.now(), [
           `block ${purchase.blockNumber}, log index ${purchase.logIndex}, purchase id ${purchase.purchaseId}, amount ${eth(purchase.amountWei)}`,
         ]),
       );
-      setBalance(await readBalance(payer));
+      onBalanceChange();
       onPurchase({
         txHash: purchase.txHash,
         logIndex: purchase.logIndex,
         blockNumber: purchase.blockNumber.toString(10),
-        payer: payer.address,
-        chainId: payer.chainId,
+        payer: signer.address,
+        chainId: signer.chainId,
         batches: made,
       });
     } catch (error) {
@@ -154,45 +184,35 @@ export function BuyStep({
   };
 
   const link = txHash === null ? null : explorerTx(deployment.payment_chain_id, txHash);
-  const total = price === null ? null : price * BigInt(count);
+  const cost = price === null || gasPrice === null ? null : purchaseCost(price, count, gasPrice);
+  const missing = cost === null || balance === null ? null : shortfallWei(balance, cost);
+  const canBuy = !busy && cost !== null && missing === 0n;
   return (
     <Section n={1} title="buy credit" state={sectionState(steps)}>
       <p className="note">
-        One batch is {deployment.batch_size} units. The wallet pays the sale contract on {chainName(deployment.payment_chain_id)} and sends only the
+        One batch is {deployment.batch_size} units. The signer pays the sale contract on {chainName(deployment.payment_chain_id)} and sends only the
         commitments. The secret never leaves the browser.
       </p>
-      <div className="row">
-        <span className="toggle" role="group" aria-label="payer">
-          <button type="button" aria-pressed={kind === "injected"} onClick={() => setKind("injected")} disabled={payer !== null}>
-            injected wallet
-          </button>
-          {dev === null ? null : (
-            <button type="button" aria-pressed={kind === "dev-key"} onClick={() => setKind("dev-key")} disabled={payer !== null}>
-              anvil test key (dev)
-            </button>
-          )}
-        </span>
-        {payer === null ? (
-          <button type="button" className="primary" onClick={connect}>
+      {signer === null ? (
+        <div className="row">
+          <button type="button" className="primary" onClick={onOpenWallet}>
             connect wallet
           </button>
-        ) : (
-          <button type="button" onClick={() => setPayer(null)} disabled={busy}>
-            disconnect wallet
-          </button>
-        )}
-      </div>
-      {connectError === "" ? null : <p className="note bad">{connectError}</p>}
-      {payer === null ? null : (
+          <span className="note">an injected wallet, a local key pair, or the dev key</span>
+        </div>
+      ) : (
         <>
           <Kv
             rows={[
-              { k: "payer", v: <Hex value={payer.address} full /> },
-              { k: "chain", v: chainName(payer.chainId) },
-              { k: "balance", v: balance === null ? "…" : eth(balance) },
-              { k: "batch price", v: price === null ? "…" : eth(price) },
+              { k: "signer", v: `${signer.name} (${signer.kind})` },
+              { k: "address", v: <Hex value={signer.address} full /> },
+              { k: "chain", v: chainName(signer.chainId) },
+              { k: "balance", v: balance === null ? "reading…" : eth(balance) },
+              { k: "batch price", v: price === null ? "reading…" : eth(price) },
+              { k: "gas estimate", v: cost === null ? "reading…" : `${eth(cost.gasWei)} (2x margin at the current gas price)` },
             ]}
           />
+          {readError === "" ? null : <p className="note bad">{readError}</p>}
           <div className="row">
             <label className="short">
               batches (1 to 100)
@@ -206,9 +226,8 @@ export function BuyStep({
               />
             </label>
             <span className="actions">
-              <button type="button" className="primary" onClick={buy} disabled={busy || price === null}>
-                buy {count} batch{count === 1 ? "" : "es"}
-                {total === null ? "" : ` for ${eth(total)}`}
+              <button type="button" className="primary" onClick={buy} disabled={!canBuy}>
+                {buyWords(count, cost, missing, busy)}
               </button>
             </span>
           </div>
@@ -229,10 +248,19 @@ export function BuyStep({
                   </a>
                 ),
             },
-            { k: "batch ids", v: commitments.map((batch) => batch.batchId).join(", ") , tone: "dim" },
+            { k: "batch ids", v: commitments.map((batch) => batch.batchId).join(", "), tone: "dim" },
           ]}
         />
       )}
     </Section>
   );
+}
+
+function buyWords(count: number, cost: ReturnType<typeof purchaseCost> | null, missing: bigint | null, busy: boolean): string {
+  const batches = `${count} batch${count === 1 ? "" : "es"}`;
+  if (busy) return "buying…";
+  if (cost === null) return `buy ${batches} (reading the price)`;
+  if (missing === null) return `buy ${batches} (reading the balance)`;
+  if (missing > 0n) return `balance short by ${eth(missing)} for ${batches} (${eth(cost.paymentWei)} + ${eth(cost.gasWei)} gas)`;
+  return `buy ${batches} for ${eth(cost.paymentWei)}`;
 }

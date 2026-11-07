@@ -10,14 +10,17 @@ import { OpenStep, type OpenResult } from "./components/OpenStep.tsx";
 import { Setup, type SetupLine } from "./components/Setup.tsx";
 import { SpendStep } from "./components/SpendStep.tsx";
 import { TopBar } from "./components/TopBar.tsx";
+import { WalletModal } from "./components/WalletModal.tsx";
 import { Hex } from "./components/primitives.tsx";
 import { explainLine } from "./lib/explain.ts";
 import { clock } from "./lib/format.ts";
 import { defaultSettings, type Settings, type TransportChoice } from "./lib/settings.ts";
 import { useNow } from "./lib/use-now.ts";
+import { readBalance, type Signer } from "./lib/wallet.ts";
 import { buildWorkbench, type Workbench } from "./lib/workbench.ts";
 
 const MAX_LOG_LINES = 80;
+const BALANCE_POLL_MS = 10_000;
 
 export function App() {
   const now = useNow(250);
@@ -34,11 +37,36 @@ export function App() {
   const [opened, setOpened] = useState<OpenResult | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [light, setLight] = useState(false);
+  const [signer, setSigner] = useState<Signer | null>(null);
+  const [balance, setBalance] = useState<bigint | null>(null);
+  const [balanceTick, setBalanceTick] = useState(0);
+  const [walletOpen, setWalletOpen] = useState(false);
   const current = useRef<Workbench | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset["theme"] = light ? "light" : "dark";
   }, [light]);
+
+  // The balance of the signer, read through its RPC every 10 s and after a purchase.
+  useEffect(() => {
+    setBalance(null);
+    if (signer === null) return;
+    let stopped = false;
+    const read = (): void => {
+      readBalance(signer).then(
+        (wei) => {
+          if (!stopped) setBalance(wei);
+        },
+        () => undefined,
+      );
+    };
+    read();
+    const timer = setInterval(read, BALANCE_POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [signer, balanceTick]);
 
   const refreshBatches = useCallback(async (): Promise<void> => {
     const wb = current.current;
@@ -85,6 +113,8 @@ export function App() {
     setInclusion(null);
     setOpened(null);
     setSetupLog([]);
+    setSigner(null);
+    setWalletOpen(false);
   };
 
   // A transport change rebuilds the workbench on the same store. Sessions and secrets stay.
@@ -123,7 +153,26 @@ export function App() {
 
   return (
     <div className="page">
-      <TopBar workbench={workbench} now={now} transport={settings.transport} onTransport={changeTransport} busy={connecting} />
+      <TopBar
+        workbench={workbench}
+        now={now}
+        transport={settings.transport}
+        onTransport={changeTransport}
+        busy={connecting}
+        signer={signer}
+        balance={balance}
+        onDisconnectSigner={() => setSigner(null)}
+      />
+      {walletOpen && workbench !== null ? (
+        <WalletModal
+          workbench={workbench}
+          onConnected={(next) => {
+            setSigner(next);
+            setWalletOpen(false);
+          }}
+          onClose={() => setWalletOpen(false)}
+        />
+      ) : null}
       <p className="intro">
         <strong>Prepaid RPC without an identity.</strong> Buy 100 units with a wallet. Prove in this browser that you hold one unspent batch,
         without saying which. Open a session at the gateway through the Nox mixnet. Spend with signed requests. The gateway never learns who
@@ -155,7 +204,15 @@ export function App() {
           ))}
         </div>
       )}
-      <BuyStep workbench={workbench} now={now} onPurchase={onPurchase} />
+      <BuyStep
+        workbench={workbench}
+        signer={signer}
+        balance={balance}
+        now={now}
+        onOpenWallet={() => setWalletOpen(true)}
+        onPurchase={onPurchase}
+        onBalanceChange={() => setBalanceTick((n) => n + 1)}
+      />
       <InclusionStep workbench={workbench} purchase={purchase} now={now} onEligible={onEligible} />
       <OpenStep workbench={workbench} inclusion={inclusion} now={now} onOpened={onOpened} />
       <SpendStep workbench={workbench} batchId={spendBatchId} now={now} purchaseTx={purchase?.txHash ?? null} onSpent={refreshBatches} />
