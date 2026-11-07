@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(api.open_upload_ttl_seconds, 600);
         assert_eq!(api.open_upload_max_pending, 1000);
         assert_eq!(api.open_upload_max_pending_bytes, 536_870_912);
-        assert_eq!(api.open_upload_chunk_bytes, 24_576);
+        assert_eq!(api.open_upload_chunk_bytes, 40_000);
         assert_eq!(api.open_upload_chunk_body_bytes, 40_000);
         let settings = GatewaySettings::from_lookup(&lookup_from(&[
             ("GATEWAY_OPEN_UPLOAD_MAX_BYTES", "1000000"),

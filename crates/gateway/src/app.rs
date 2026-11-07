@@ -50,7 +50,7 @@ pub struct Limits {
     pub response_retention_secs: u64,
     /// Time that a spend request waits for the batch lock.
     pub batch_lock_wait: Duration,
-    /// Limits of chunked proof uploads (`PUT /v1/open/chunks`).
+    /// Limits of chunked proof uploads (`PUT /v1/open/chunks/...`).
     pub upload: UploadLimits,
 }
 
@@ -322,7 +322,7 @@ pub fn public_router(gateway: SharedGateway) -> Router {
             post(open::open).layer(DefaultBodyLimit::max(limits.open_body_bytes)),
         )
         .route(
-            "/v1/open/chunks",
+            "/v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}",
             put(upload::put_chunk).layer(DefaultBodyLimit::max(OPEN_CHUNK_BODY_LIMIT_BYTES)),
         )
         .route(

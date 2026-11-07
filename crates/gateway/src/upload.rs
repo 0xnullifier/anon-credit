@@ -1,9 +1,14 @@
-//! Chunked proof upload: `PUT /v1/open/chunks`.
+//! Chunked proof upload:
+//! `PUT /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}`.
 //!
-//! The Nox worker refuses request bodies above about 48,000 bytes. An open request with an
-//! inline proof is about 640 KB. Thus a client sends the proof bytes in chunks of at most
-//! 24 KiB, then sends `POST /v1/open` with `proof_upload: {proof_sha256, total_bytes,
+//! The Nox worker refuses requests above about 48,000 bytes. An open request with an inline
+//! proof is about 640 KB. Thus a client sends the proof bytes in chunks of at most 40,000
+//! bytes, then sends `POST /v1/open` with `proof_upload: {proof_sha256, total_bytes,
 //! proof_encoding}` in place of `proof`. The open pipeline does not change.
+//!
+//! Wire format: the request body is the raw chunk bytes (`application/octet-stream`, no
+//! base64, no JSON). The path has the metadata of the chunk ([`OpenChunkPath`]). The path has
+//! no secret: the batch ID and the digest are public to the gateway.
 //!
 //! Rules:
 //!
@@ -28,13 +33,13 @@ use crate::app::{SharedGateway, read_body};
 use crate::error::ApiError;
 use anon_credit_crypto::FieldElement;
 use anon_credit_protocol::api::{
-    OPEN_CHUNK_MAX_BYTES, OpenChunkRequest, OpenChunkResponse, ProofEncoding, ProofUpload,
+    OPEN_CHUNK_MAX_BYTES, OpenChunkPath, OpenChunkResponse, ProofEncoding, ProofUpload,
 };
 use anon_credit_protocol::{Bytes32, ErrorCode};
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::State;
-use axum::extract::rejection::BytesRejection;
+use axum::extract::rejection::{BytesRejection, PathRejection};
+use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -188,7 +193,7 @@ impl UploadStore {
         (inner.uploads.len(), inner.reserved_bytes)
     }
 
-    fn shape(&self, chunk: &OpenChunkRequest) -> Result<ChunkShape, UploadError> {
+    fn shape(&self, chunk: &OpenChunkPath, data_len: usize) -> Result<ChunkShape, UploadError> {
         let total_bytes = usize::try_from(chunk.total_bytes)
             .map_err(|_| UploadError::Invalid("total_bytes is too large"))?;
         if total_bytes == 0 || total_bytes > self.limits.max_bytes {
@@ -215,7 +220,6 @@ impl UploadStore {
         }
         let index = usize::try_from(chunk.chunk_index)
             .map_err(|_| UploadError::Invalid("chunk_index is too large"))?;
-        let data_len = chunk.data.0.len();
         if data_len == 0 || data_len > OPEN_CHUNK_MAX_BYTES {
             return Err(UploadError::Invalid(
                 "chunk data is empty or above the chunk size limit",
@@ -228,13 +232,14 @@ impl UploadStore {
         })
     }
 
-    /// Add one chunk at `now_unix`.
+    /// Add one chunk with the bytes `data` at `now_unix`.
     pub fn put_chunk(
         &self,
-        chunk: &OpenChunkRequest,
+        chunk: &OpenChunkPath,
+        data: &[u8],
         now_unix: u64,
     ) -> Result<ChunkOutcome, UploadError> {
-        let shape = self.shape(chunk)?;
+        let shape = self.shape(chunk, data.len())?;
         let key = UploadKey {
             batch_id: chunk.batch_id,
             proof_sha256: chunk.proof_sha256,
@@ -268,7 +273,7 @@ impl UploadStore {
                 .uploads
                 .get_mut(&key)
                 .ok_or(UploadError::Invalid("upload is not present"))?;
-            add_chunk(pending, &shape, &chunk.data.0)
+            add_chunk(pending, &shape, data)
         };
         match outcome {
             Ok(Added::Waiting(outcome)) => Ok(outcome),
@@ -470,12 +475,16 @@ pub fn decode_proof(
     }
 }
 
-/// `PUT /v1/open/chunks`.
+/// The five path segments of the chunk route, in route order.
+pub type ChunkSegments = (String, String, String, String, String);
+
+/// `PUT /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}`.
 pub async fn put_chunk(
     State(gateway): State<SharedGateway>,
+    segments: Result<Path<ChunkSegments>, PathRejection>,
     body: Result<Bytes, BytesRejection>,
 ) -> Response {
-    match put_chunk_inner(&gateway, body) {
+    match put_chunk_inner(&gateway, segments, body) {
         Ok(outcome) => Json(OpenChunkResponse {
             received_chunks: outcome.received_chunks,
             complete: outcome.complete,
@@ -487,15 +496,20 @@ pub async fn put_chunk(
 
 fn put_chunk_inner(
     gateway: &SharedGateway,
+    segments: Result<Path<ChunkSegments>, PathRejection>,
     body: Result<Bytes, BytesRejection>,
 ) -> Result<ChunkOutcome, ApiError> {
+    let Path((batch_id, proof_sha256, total_bytes, chunk_count, chunk_index)) = segments
+        .map_err(|_| ApiError::new(ErrorCode::InvalidRequest, "chunk path is not readable"))?;
+    let chunk = OpenChunkPath::from_segments(
+        &batch_id,
+        &proof_sha256,
+        &total_bytes,
+        &chunk_count,
+        &chunk_index,
+    )
+    .map_err(|error| ApiError::new(ErrorCode::InvalidRequest, &error.to_string()))?;
     let body = read_body(body)?;
-    let chunk: OpenChunkRequest = serde_json::from_slice(&body).map_err(|_| {
-        ApiError::new(
-            ErrorCode::InvalidRequest,
-            "chunk request does not match the schema",
-        )
-    })?;
     FieldElement::from_bytes_be(&chunk.batch_id.0).map_err(|_| {
         ApiError::new(
             ErrorCode::InvalidRequest,
@@ -504,32 +518,44 @@ fn put_chunk_inner(
     })?;
     gateway
         .uploads
-        .put_chunk(&chunk, gateway.clock.now_unix())
+        .put_chunk(&chunk, &body, gateway.clock.now_unix())
         .map_err(|error| error.to_api())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anon_credit_protocol::Base64Bytes;
     use std::io::Write;
+
+    /// One chunk: its path and its bytes.
+    #[derive(Debug, Clone)]
+    struct Chunk {
+        path: OpenChunkPath,
+        data: Vec<u8>,
+    }
+
+    fn put(store: &UploadStore, chunk: &Chunk, now: u64) -> Result<ChunkOutcome, UploadError> {
+        store.put_chunk(&chunk.path, &chunk.data, now)
+    }
 
     fn sha(bytes: &[u8]) -> Bytes32 {
         Bytes32(Sha256::digest(bytes).into())
     }
 
-    fn chunks_of(batch: u8, bytes: &[u8], size: usize) -> Vec<OpenChunkRequest> {
+    fn chunks_of(batch: u8, bytes: &[u8], size: usize) -> Vec<Chunk> {
         let count = u32::try_from(bytes.len().div_ceil(size)).unwrap();
         bytes
             .chunks(size)
             .enumerate()
-            .map(|(index, data)| OpenChunkRequest {
-                batch_id: Bytes32([batch; 32]),
-                proof_sha256: sha(bytes),
-                total_bytes: u32::try_from(bytes.len()).unwrap(),
-                chunk_index: u32::try_from(index).unwrap(),
-                chunk_count: count,
-                data: Base64Bytes(data.to_vec()),
+            .map(|(index, data)| Chunk {
+                path: OpenChunkPath {
+                    batch_id: Bytes32([batch; 32]),
+                    proof_sha256: sha(bytes),
+                    total_bytes: u32::try_from(bytes.len()).unwrap(),
+                    chunk_count: count,
+                    chunk_index: u32::try_from(index).unwrap(),
+                },
+                data: data.to_vec(),
             })
             .collect()
     }
@@ -549,13 +575,13 @@ mod tests {
     #[test]
     fn chunks_in_any_order_complete_the_upload() {
         let store = UploadStore::new(UploadLimits::default());
-        let bytes = proof(100_000);
+        let bytes = proof(200_000);
         let mut chunks = chunks_of(1, &bytes, OPEN_CHUNK_MAX_BYTES);
         assert_eq!(chunks.len(), 5);
         chunks.reverse();
         let mut last = None;
         for chunk in &chunks {
-            last = Some(store.put_chunk(chunk, 10).unwrap());
+            last = Some(put(&store, chunk, 10).unwrap());
         }
         assert_eq!(
             last,
@@ -580,34 +606,35 @@ mod tests {
         let store = UploadStore::new(UploadLimits::default());
         let bytes = proof(50_000);
         let chunks = chunks_of(1, &bytes, OPEN_CHUNK_MAX_BYTES);
-        let first = store.put_chunk(&chunks[0], 0).unwrap();
-        assert_eq!(store.put_chunk(&chunks[0], 0).unwrap(), first);
+        let first = put(&store, &chunks[0], 0).unwrap();
+        assert_eq!(put(&store, &chunks[0], 0).unwrap(), first);
         let mut changed = chunks[0].clone();
-        changed.data.0[0] ^= 1;
+        changed.data[0] ^= 1;
         assert_eq!(
-            store.put_chunk(&changed, 0),
+            put(&store, &changed, 0),
             Err(UploadError::Invalid(
                 "chunk differs from an earlier chunk with the same index"
             ))
         );
         for chunk in &chunks[1..] {
-            store.put_chunk(chunk, 0).unwrap();
+            put(&store, chunk, 0).unwrap();
         }
         // A duplicate after completion still answers "complete".
-        assert!(store.put_chunk(&chunks[1], 0).unwrap().complete);
+        assert!(put(&store, &chunks[1], 0).unwrap().complete);
     }
 
     #[test]
     fn wrong_sha256_deletes_the_upload() {
         let store = UploadStore::new(UploadLimits::default());
-        let bytes = proof(30_000);
+        let bytes = proof(60_000);
         let mut chunks = chunks_of(1, &bytes, OPEN_CHUNK_MAX_BYTES);
+        assert_eq!(chunks.len(), 2);
         for chunk in &mut chunks {
-            chunk.proof_sha256 = Bytes32([9; 32]);
+            chunk.path.proof_sha256 = Bytes32([9; 32]);
         }
-        store.put_chunk(&chunks[0], 0).unwrap();
+        put(&store, &chunks[0], 0).unwrap();
         assert!(matches!(
-            store.put_chunk(&chunks[1], 0),
+            put(&store, &chunks[1], 0),
             Err(UploadError::Invalid(_))
         ));
         assert_eq!(store.pending(), (0, 0));
@@ -624,95 +651,94 @@ mod tests {
         };
         let store = UploadStore::new(limits);
         let base = chunks_of(1, &proof(60_000), OPEN_CHUNK_MAX_BYTES)[0].clone();
-        let cases: Vec<(&str, OpenChunkRequest)> = vec![
+        let with = |path: OpenChunkPath| Chunk {
+            path,
+            data: base.data.clone(),
+        };
+        let cases: Vec<(&str, Chunk)> = vec![
             (
                 "too large",
-                OpenChunkRequest {
+                with(OpenChunkPath {
                     total_bytes: 100_001,
                     chunk_count: 5,
-                    ..base.clone()
-                },
+                    ..base.path
+                }),
             ),
             (
                 "zero length",
-                OpenChunkRequest {
+                with(OpenChunkPath {
                     total_bytes: 0,
-                    ..base.clone()
-                },
+                    ..base.path
+                }),
             ),
             (
                 "too many chunks",
-                OpenChunkRequest {
+                with(OpenChunkPath {
                     chunk_count: 9,
-                    ..base.clone()
-                },
+                    ..base.path
+                }),
             ),
             (
                 "too few chunks",
-                OpenChunkRequest {
-                    chunk_count: 2,
-                    ..base.clone()
-                },
+                with(OpenChunkPath {
+                    chunk_count: 1,
+                    ..base.path
+                }),
             ),
             (
                 "index",
-                OpenChunkRequest {
+                with(OpenChunkPath {
                     chunk_index: 3,
-                    ..base.clone()
-                },
+                    ..base.path
+                }),
             ),
             (
                 "big data",
-                OpenChunkRequest {
-                    data: Base64Bytes(vec![0; OPEN_CHUNK_MAX_BYTES + 1]),
-                    ..base.clone()
+                Chunk {
+                    path: base.path,
+                    data: vec![0; OPEN_CHUNK_MAX_BYTES + 1],
                 },
             ),
             (
                 "empty data",
-                OpenChunkRequest {
-                    data: Base64Bytes(Vec::new()),
-                    ..base.clone()
+                Chunk {
+                    path: base.path,
+                    data: Vec::new(),
                 },
             ),
         ];
         for (name, chunk) in cases {
             assert!(
-                matches!(store.put_chunk(&chunk, 0), Err(UploadError::Invalid(_))),
+                matches!(put(&store, &chunk, 0), Err(UploadError::Invalid(_))),
                 "{name}"
             );
         }
         assert_eq!(store.pending(), (0, 0));
 
         // A chunk with another total_bytes than the first chunk of the upload.
-        store.put_chunk(&base, 0).unwrap();
-        let other = OpenChunkRequest {
+        put(&store, &base, 0).unwrap();
+        let other = with(OpenChunkPath {
             total_bytes: 60_001,
             chunk_index: 1,
-            ..base.clone()
-        };
+            ..base.path
+        });
         assert!(matches!(
-            store.put_chunk(&other, 0),
+            put(&store, &other, 0),
             Err(UploadError::Invalid(_))
         ));
 
         // Pending bytes: 60,000 reserved; another 100,000 does not fit in 150,000.
         let big = chunks_of(2, &proof(100_000), OPEN_CHUNK_MAX_BYTES);
-        assert!(matches!(
-            store.put_chunk(&big[0], 0),
-            Err(UploadError::Full(_))
-        ));
+        assert!(matches!(put(&store, &big[0], 0), Err(UploadError::Full(_))));
         // Pending count: two uploads fit, a third is refused.
-        store
-            .put_chunk(&chunks_of(3, &proof(1000), 500)[0], 0)
-            .unwrap();
+        put(&store, &chunks_of(3, &proof(1000), 500)[0], 0).unwrap();
         assert!(matches!(
-            store.put_chunk(&chunks_of(4, &proof(1000), 500)[0], 0),
+            put(&store, &chunks_of(4, &proof(1000), 500)[0], 0),
             Err(UploadError::Full(_))
         ));
         assert_eq!(UploadError::Full("x").to_api().code(), ErrorCode::Busy);
         // After the TTL, the expired uploads make space again.
-        assert!(store.put_chunk(&big[0], 60).is_ok());
+        assert!(put(&store, &big[0], 60).is_ok());
         assert_eq!(store.pending(), (1, 100_000));
     }
 
@@ -721,7 +747,7 @@ mod tests {
         let store = UploadStore::new(UploadLimits::default());
         let bytes = proof(1000);
         for chunk in chunks_of(1, &bytes, 400) {
-            store.put_chunk(&chunk, 100).unwrap();
+            put(&store, &chunk, 100).unwrap();
         }
         assert_eq!(store.evict_expired(699), 0);
         assert_eq!(
@@ -729,7 +755,7 @@ mod tests {
             Err(UploadError::Invalid("proof upload is expired"))
         );
         for chunk in chunks_of(1, &bytes, 400) {
-            store.put_chunk(&chunk, 100).unwrap();
+            put(&store, &chunk, 100).unwrap();
         }
         assert_eq!(store.evict_expired(700), 1);
         assert_eq!(store.pending(), (0, 0));
@@ -740,7 +766,7 @@ mod tests {
         let store = UploadStore::new(UploadLimits::default());
         let bytes = proof(1000);
         let chunks = chunks_of(1, &bytes, 400);
-        store.put_chunk(&chunks[0], 0).unwrap();
+        put(&store, &chunks[0], 0).unwrap();
         let reference = reference(&bytes, ProofEncoding::Json);
         assert_eq!(
             store.take(Bytes32([1; 32]), &reference, 0),
@@ -748,7 +774,7 @@ mod tests {
         );
         assert_eq!(store.pending(), (0, 0));
         for chunk in &chunks {
-            store.put_chunk(chunk, 0).unwrap();
+            put(&store, chunk, 0).unwrap();
         }
         let wrong_length = ProofUpload {
             total_bytes: 999,

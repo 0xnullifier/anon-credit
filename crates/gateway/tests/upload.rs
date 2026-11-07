@@ -1,4 +1,5 @@
-//! Chunked proof upload (`PUT /v1/open/chunks`) and `POST /v1/open` with `proof_upload`.
+//! Chunked proof upload (`PUT /v1/open/chunks/...` with a raw body) and `POST /v1/open` with
+//! `proof_upload`.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
@@ -8,14 +9,13 @@ use anon_credit_gateway::app::Limits;
 use anon_credit_gateway::server::prune;
 use anon_credit_gateway::upload::UploadLimits;
 use anon_credit_protocol::api::{
-    GatewayConfigResponse, OPEN_CHUNK_BODY_LIMIT_BYTES, OPEN_CHUNK_MAX_BYTES, OpenChunkRequest,
+    GatewayConfigResponse, OPEN_CHUNK_BODY_LIMIT_BYTES, OPEN_CHUNK_MAX_BYTES, OpenChunkPath,
     OpenChunkResponse, OpenRequest, OpenResponse, ProofEncoding, ProofUpload,
 };
-use anon_credit_protocol::{Base64Bytes, Bytes32, ErrorCode};
+use anon_credit_protocol::{Bytes32, ErrorCode};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use common::{Client, Harness, OpenOptions, Options};
-use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::sync::atomic::Ordering;
@@ -30,29 +30,47 @@ fn gzip(bytes: &[u8]) -> Vec<u8> {
     encoder.finish().unwrap()
 }
 
+/// One chunk request: the path and the raw body.
+#[derive(Debug, Clone)]
+struct Chunk {
+    path: OpenChunkPath,
+    data: Vec<u8>,
+}
+
+impl Chunk {
+    /// The same body with another path.
+    fn at(&self, path: OpenChunkPath) -> Self {
+        Self {
+            path,
+            data: self.data.clone(),
+        }
+    }
+}
+
 /// Split `bytes` into chunk requests of at most `size` bytes.
-fn chunks(batch_id: Bytes32, bytes: &[u8], size: usize) -> Vec<OpenChunkRequest> {
+fn chunks(batch_id: Bytes32, bytes: &[u8], size: usize) -> Vec<Chunk> {
     let count = u32::try_from(bytes.len().div_ceil(size)).unwrap();
     bytes
         .chunks(size)
         .enumerate()
-        .map(|(index, data)| OpenChunkRequest {
-            batch_id,
-            proof_sha256: sha256(bytes),
-            total_bytes: u32::try_from(bytes.len()).unwrap(),
-            chunk_index: u32::try_from(index).unwrap(),
-            chunk_count: count,
-            data: Base64Bytes(data.to_vec()),
+        .map(|(index, data)| Chunk {
+            path: OpenChunkPath {
+                batch_id,
+                proof_sha256: sha256(bytes),
+                total_bytes: u32::try_from(bytes.len()).unwrap(),
+                chunk_count: count,
+                chunk_index: u32::try_from(index).unwrap(),
+            },
+            data: data.to_vec(),
         })
         .collect()
 }
 
-async fn put_chunk(h: &Harness, chunk: &OpenChunkRequest) -> common::TestResponse {
-    h.put("/v1/open/chunks", serde_json::to_vec(chunk).unwrap())
-        .await
+async fn put_chunk(h: &Harness, chunk: &Chunk) -> common::TestResponse {
+    h.put(&chunk.path.to_path(), chunk.data.clone()).await
 }
 
-async fn put_ok(h: &Harness, chunk: &OpenChunkRequest) -> OpenChunkResponse {
+async fn put_ok(h: &Harness, chunk: &Chunk) -> OpenChunkResponse {
     let response = put_chunk(h, chunk).await;
     assert_eq!(
         response.status,
@@ -159,7 +177,7 @@ async fn chunks_arrive_in_any_order_and_duplicates_are_idempotent() {
     }
     // A chunk with the same index and different bytes is refused.
     let mut changed = all[0].clone();
-    changed.data.0[0] ^= 1;
+    changed.data[0] ^= 1;
     let refused = put_chunk(&h, &changed).await;
     assert_eq!(refused.status, StatusCode::BAD_REQUEST);
     assert_eq!(refused.error_code(), ErrorCode::InvalidRequest);
@@ -185,7 +203,7 @@ async fn sha256_mismatch_deletes_the_upload() {
     let proof = inline_proof(&h, &client);
     let mut all = chunks(client.batch_id, &proof, 100);
     for chunk in &mut all {
-        chunk.proof_sha256 = Bytes32([7; 32]);
+        chunk.path.proof_sha256 = Bytes32([7; 32]);
     }
     let last = all.len() - 1;
     for chunk in &all[..last] {
@@ -216,92 +234,127 @@ async fn size_and_limit_rejections() {
     .await;
     let batch = Client::new(1).batch_id;
 
-    // A body above 40,000 bytes is refused before parsing (HTTP 413).
+    let base = OpenChunkPath {
+        batch_id: batch,
+        proof_sha256: Bytes32([1; 32]),
+        total_bytes: 50_000,
+        chunk_count: 2,
+        chunk_index: 0,
+    };
+    // A body above 40,000 bytes is refused before the store (HTTP 413).
     let response = h
-        .put(
-            "/v1/open/chunks",
-            vec![b' '; OPEN_CHUNK_BODY_LIMIT_BYTES + 1],
-        )
+        .put(&base.to_path(), vec![0; OPEN_CHUNK_BODY_LIMIT_BYTES + 1])
         .await;
     assert_eq!(response.status, StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(response.error_code(), ErrorCode::InvalidRequest);
-
-    // A chunk with more than 24 KiB of data.
-    let big = OpenChunkRequest {
-        batch_id: batch,
-        proof_sha256: Bytes32([1; 32]),
-        total_bytes: 30_000,
-        chunk_index: 0,
-        chunk_count: 2,
-        data: Base64Bytes(vec![0; OPEN_CHUNK_MAX_BYTES + 1]),
+    // A body of exactly 40,000 bytes is accepted.
+    let largest = Chunk {
+        path: OpenChunkPath {
+            proof_sha256: Bytes32([9; 32]),
+            ..base
+        },
+        data: vec![0; OPEN_CHUNK_MAX_BYTES],
     };
-    assert_eq!(put_chunk(&h, &big).await.status, StatusCode::BAD_REQUEST);
+    put_ok(&h, &largest).await;
+    assert!(
+        h.gateway
+            .uploads
+            .remove(&anon_credit_gateway::upload::UploadKey {
+                batch_id: batch,
+                proof_sha256: Bytes32([9; 32]),
+            })
+    );
+
+    // An empty body.
+    let empty = Chunk {
+        path: base,
+        data: Vec::new(),
+    };
+    assert_eq!(put_chunk(&h, &empty).await.status, StatusCode::BAD_REQUEST);
+    let small = Chunk {
+        path: base,
+        data: vec![0; 100],
+    };
     // An upload above the upload limit.
-    let huge = OpenChunkRequest {
+    let huge = small.at(OpenChunkPath {
         total_bytes: 200_001,
         chunk_count: 9,
-        data: Base64Bytes(vec![0; 100]),
-        ..big.clone()
-    };
+        ..base
+    });
     assert_eq!(put_chunk(&h, &huge).await.status, StatusCode::BAD_REQUEST);
     // More chunks than the chunk limit.
-    let many = OpenChunkRequest {
+    let many = small.at(OpenChunkPath {
         total_bytes: 1000,
         chunk_count: 17,
-        data: Base64Bytes(vec![0; 10]),
-        ..big.clone()
-    };
+        ..base
+    });
     assert_eq!(put_chunk(&h, &many).await.status, StatusCode::BAD_REQUEST);
     // A batch ID that is not a canonical field element.
-    let bad_batch = OpenChunkRequest {
-        batch_id: Bytes32([0xff; 32]),
-        total_bytes: 1000,
-        chunk_count: 1,
-        data: Base64Bytes(vec![0; 1000]),
-        ..big.clone()
+    let bad_batch = Chunk {
+        path: OpenChunkPath {
+            batch_id: Bytes32([0xff; 32]),
+            total_bytes: 1000,
+            chunk_count: 1,
+            ..base
+        },
+        data: vec![0; 1000],
     };
     assert_eq!(
         put_chunk(&h, &bad_batch).await.status,
         StatusCode::BAD_REQUEST
     );
-    // Unknown fields.
-    let unknown = json!({"batch_id": batch, "extra": 1});
-    assert_eq!(
-        h.put("/v1/open/chunks", serde_json::to_vec(&unknown).unwrap())
-            .await
-            .status,
-        StatusCode::BAD_REQUEST
-    );
+    // Paths that are not canonical: each is invalid_request with a JSON error body.
+    let good = base.to_path();
+    let bad_paths = [
+        good.replace("/50000/", "/050000/"),
+        good.replace("/50000/", "/+50000/"),
+        good.replace(
+            &batch.to_hex(),
+            &batch.to_hex().to_uppercase().replacen('X', "x", 1),
+        ),
+        good.replace("/2/0", "/2/-1"),
+        good.replace("/50000/", "/4294967296/"),
+    ];
+    for path in &bad_paths {
+        assert_ne!(path, &good);
+        let response = h.put(path, vec![0; 10]).await;
+        assert_eq!(response.status, StatusCode::BAD_REQUEST, "{path}");
+        assert_eq!(response.error_code(), ErrorCode::InvalidRequest, "{path}");
+    }
+    // The old JSON route and a path with a missing segment do not exist.
+    for path in ["/v1/open/chunks", "/v1/open/chunks/0x01/0x02/1/1"] {
+        let response = h.put(path, b"{}".to_vec()).await;
+        assert_eq!(response.status, StatusCode::NOT_FOUND, "{path}");
+    }
     assert_eq!(h.gateway.uploads.pending(), (0, 0));
 
     // Pending bytes: 200,000 reserved, then 150,000 more does not fit in 300,000.
-    let first = OpenChunkRequest {
+    let first = small.at(OpenChunkPath {
         total_bytes: 200_000,
         chunk_count: 9,
-        data: Base64Bytes(vec![0; 100]),
-        ..big.clone()
-    };
+        ..base
+    });
     put_ok(&h, &first).await;
-    let second = OpenChunkRequest {
+    let second = small.at(OpenChunkPath {
         proof_sha256: Bytes32([2; 32]),
         total_bytes: 150_000,
         chunk_count: 7,
-        ..first.clone()
-    };
+        ..first.path
+    });
     let busy = put_chunk(&h, &second).await;
     assert_eq!(busy.status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(busy.error_code(), ErrorCode::Busy);
     // Pending count: a second upload fits, a third is refused.
-    let small = OpenChunkRequest {
+    let small_upload = small.at(OpenChunkPath {
         total_bytes: 1000,
         chunk_count: 2,
-        ..second.clone()
-    };
-    put_ok(&h, &small).await;
-    let third = OpenChunkRequest {
+        ..second.path
+    });
+    put_ok(&h, &small_upload).await;
+    let third = small.at(OpenChunkPath {
         proof_sha256: Bytes32([3; 32]),
-        ..small.clone()
-    };
+        ..small_upload.path
+    });
     assert_eq!(put_chunk(&h, &third).await.error_code(), ErrorCode::Busy);
 }
 
@@ -420,7 +473,7 @@ async fn config_publishes_the_upload_limits_and_cors_allows_put() {
     let config: GatewayConfigResponse = h.get("/v1/config").await.json();
     let limits = config.limits;
     assert_eq!(limits.open_upload_max_bytes, 4 * 1024 * 1024);
-    assert_eq!(limits.open_upload_chunk_bytes, 24 * 1024);
+    assert_eq!(limits.open_upload_chunk_bytes, 40_000);
     assert_eq!(limits.open_upload_chunk_body_bytes, 40_000);
     assert_eq!(limits.open_upload_max_chunks, 256);
     assert_eq!(limits.open_upload_ttl_seconds, 600);
@@ -429,7 +482,16 @@ async fn config_publishes_the_upload_limits_and_cors_allows_put() {
 
     let preflight = Request::builder()
         .method("OPTIONS")
-        .uri("/v1/open/chunks")
+        .uri(
+            OpenChunkPath {
+                batch_id: Bytes32([1; 32]),
+                proof_sha256: Bytes32([2; 32]),
+                total_bytes: 10,
+                chunk_count: 1,
+                chunk_index: 0,
+            }
+            .to_path(),
+        )
         .header("origin", "http://localhost:5174")
         .header("access-control-request-method", "PUT")
         .header("access-control-request-headers", "content-type")

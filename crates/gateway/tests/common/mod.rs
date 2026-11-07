@@ -448,11 +448,12 @@ impl Harness {
         self.post_with(path, body, &[]).await
     }
 
+    /// `PUT` with a raw `application/octet-stream` body (the chunk route).
     pub async fn put(&self, path: &str, body: Vec<u8>) -> TestResponse {
         let request = Request::builder()
             .method("PUT")
             .uri(path)
-            .header("content-type", "application/json")
+            .header("content-type", "application/octet-stream")
             .body(Body::from(body))
             .unwrap();
         Self::send(self.router(), request).await
