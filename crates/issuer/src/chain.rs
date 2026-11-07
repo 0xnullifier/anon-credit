@@ -39,9 +39,9 @@ pub enum ChainError {
     /// The RPC request failed. A later request can succeed.
     #[error("rpc request failed: {0}")]
     Rpc(String),
-    /// The RPC does not give a finalized block. The issuer must wait. It must not use a fixed
-    /// block depth instead.
-    #[error("finalized block is not available: {0}")]
+    /// The RPC does not give a block for the configured block tag (`BLOCK_TAG`). The issuer
+    /// must wait. It must not use a fixed block depth instead.
+    #[error("block of the configured block tag is not available: {0}")]
     FinalityUnavailable(String),
     /// A contract call returned data that does not decode.
     #[error("contract response does not decode: {0}")]
@@ -139,9 +139,11 @@ pub trait Chain: Send + Sync + 'static {
     /// `eth_chainId`.
     fn chain_id(&self) -> impl Future<Output = Result<u64, ChainError>> + Send;
 
-    /// The block of the `finalized` tag. [`ChainError::FinalityUnavailable`] if the RPC does
-    /// not support the tag or returns no block.
-    fn finalized_block(&self) -> impl Future<Output = Result<BlockRef, ChainError>> + Send;
+    /// The block of the configured block tag (`BLOCK_TAG`: `finalized` by default, `safe`,
+    /// or `latest`). The issuer trusts a payment or a root publication at or below this
+    /// block. [`ChainError::FinalityUnavailable`] if the RPC does not support the tag or
+    /// returns no block.
+    fn confirmed_block(&self) -> impl Future<Output = Result<BlockRef, ChainError>> + Send;
 
     /// The block of the `latest` tag.
     fn latest_block(&self) -> impl Future<Output = Result<BlockRef, ChainError>> + Send;

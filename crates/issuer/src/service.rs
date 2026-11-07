@@ -108,9 +108,9 @@ impl ServiceConfig {
 /// What the service last saw of the chain.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Observed {
-    /// The last finalized block number.
+    /// The last block number of the configured block tag (`BLOCK_TAG`).
     pub finalized_block: Option<u64>,
-    /// The reason why the last finalized block request failed, if it failed.
+    /// The reason why the last block tag request failed, if it failed.
     pub finality_problem: Option<String>,
 }
 
@@ -596,12 +596,13 @@ impl<C: Chain> Service<C> {
 
     /// One pass of the sale indexer.
     ///
-    /// It reads `Purchased` logs from the stored next block up to the finalized block, checks
-    /// and issues each one, and stores the next block. Then it checks the tracked payments
-    /// again. If the RPC gives no finalized block, it does nothing and reports the reason.
+    /// It reads `Purchased` logs from the stored next block up to the block of the configured
+    /// tag (`BLOCK_TAG`), checks and issues each one, and stores the next block. Then it
+    /// checks the tracked payments again. If the RPC gives no block for the tag, it does
+    /// nothing and reports the reason.
     pub async fn indexer_tick(&self) -> Result<IndexerReport, ServiceError> {
         let mut report = IndexerReport::default();
-        let finalized = match self.chain.finalized_block().await {
+        let finalized = match self.chain.confirmed_block().await {
             Ok(block) => block,
             Err(ChainError::FinalityUnavailable(reason)) => {
                 tracing::warn!(%reason, "no finalized block; payment issuance waits");
@@ -720,7 +721,9 @@ impl<C: Chain> Service<C> {
         if self.chain.publisher().is_none() {
             return Ok(());
         }
-        let finalized = match self.chain.finalized_block().await {
+        // A publication at or below this block gets the status `finalized`. With
+        // `BLOCK_TAG=latest`, that is each mined publication (testnet only).
+        let finalized = match self.chain.confirmed_block().await {
             Ok(block) => {
                 self.observe(Ok(block.number));
                 Some(block.number)

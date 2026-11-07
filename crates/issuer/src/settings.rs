@@ -4,6 +4,7 @@
 //! |---|---|---|
 //! | `DEPLOYMENT_CONFIG` | none (required to run) | Deployment TOML file. |
 //! | `EPOCH_SECONDS` | deployment value | Must equal the deployment value if set. |
+//! | `BLOCK_TAG` | `finalized` | Block tag of the sale indexer and the root publisher: `finalized`, `safe`, or `latest`. `latest` is for a testnet only. |
 //! | `SEPOLIA_RPC_URL` | none (required to run) | RPC for indexing and publication. Secret. |
 //! | `ISSUER_PRIVATE_KEY` | none | Root publisher key. Secret. Without it, no root is sent. |
 //! | `SALE_ADDRESS` | deployment value | Must equal `sale_address` if set. |

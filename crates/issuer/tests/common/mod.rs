@@ -273,7 +273,7 @@ impl Chain for MockChain {
         Ok(state.chain_id)
     }
 
-    async fn finalized_block(&self) -> Result<BlockRef, ChainError> {
+    async fn confirmed_block(&self) -> Result<BlockRef, ChainError> {
         let state = self.state();
         state.check_up()?;
         match state.finalized {

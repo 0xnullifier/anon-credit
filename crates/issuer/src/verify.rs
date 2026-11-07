@@ -4,8 +4,11 @@
 //! issues credit for a payment only if all of these are true (implementation.md section 7):
 //!
 //! 1. The RPC has a receipt for the transaction, and the receipt status is success.
-//! 2. The receipt block is at or below the `finalized` block of the RPC. If the RPC gives no
-//!    finalized block, the payment waits. A fixed block depth is never used instead.
+//! 2. The receipt block is at or below the block of the configured block tag (`BLOCK_TAG`,
+//!    default `finalized`). If the RPC gives no block for the tag, the payment waits. A fixed
+//!    block depth is never used instead. With `latest`, each mined receipt passes this check:
+//!    a reorganization can then remove a payment that is already issued (testnet only).
+//!    Below, "finalized" means "at or below the block of the configured tag".
 //! 3. The receipt block hash is the canonical hash at that height.
 //! 4. The receipt has a log with the requested block log index. The log is not removed, it
 //!    belongs to the same transaction and block, it is from the configured `CreditSale`
@@ -136,7 +139,8 @@ pub fn check_log(
     })
 }
 
-/// Read the receipt, the finalized block, and the canonical hash, then check the payment.
+/// Read the receipt, the block of the configured tag, and the canonical hash, then check the
+/// payment.
 ///
 /// `ChainError::FinalityUnavailable` gives a pending verdict. Other chain errors return `Err`.
 pub async fn assess_payment<C: Chain>(
@@ -163,7 +167,7 @@ pub async fn assess_payment<C: Chain>(
         ));
     };
     let block_number = Some(receipt.block_number);
-    let finalized = match chain.finalized_block().await {
+    let finalized = match chain.confirmed_block().await {
         Ok(block) => block,
         Err(ChainError::FinalityUnavailable(_)) => {
             return Ok((

@@ -72,6 +72,7 @@ async fn run(settings: IssuerSettings) -> anyhow::Result<()> {
         rpc_url,
         settings.private_key.as_deref(),
         deployment.payment_chain_id,
+        settings.common.block_tag,
     )?;
     if chain.publisher().is_none() {
         tracing::warn!("ISSUER_PRIVATE_KEY is not set: roots are recorded but not published");

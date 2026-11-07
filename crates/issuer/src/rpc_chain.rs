@@ -14,6 +14,7 @@ use alloy::rpc::types::{BlockNumberOrTag, Filter, Log, TransactionReceipt, Trans
 use alloy::signers::local::PrivateKeySigner;
 use alloy::sol_types::SolCall;
 use alloy::transports::{RpcError, TransportErrorKind};
+use anon_credit_protocol::settings::BlockTag;
 
 /// Chain access through one JSON-RPC endpoint.
 #[derive(Clone)]
@@ -21,6 +22,7 @@ pub struct RpcChain {
     provider: RootProvider,
     signer: Option<(EthereumWallet, Address)>,
     chain_id: u64,
+    block_tag: BlockTag,
 }
 
 impl std::fmt::Debug for RpcChain {
@@ -28,6 +30,7 @@ impl std::fmt::Debug for RpcChain {
         // Do not print the URL or the key.
         f.debug_struct("RpcChain")
             .field("chain_id", &self.chain_id)
+            .field("block_tag", &self.block_tag)
             .field(
                 "publisher",
                 &self.signer.as_ref().map(|(_, address)| *address),
@@ -43,11 +46,13 @@ fn rpc_error(error: RpcError<TransportErrorKind>) -> ChainError {
 impl RpcChain {
     /// Connect to `rpc_url`. `private_key` is the hex publisher key, if root publication is on.
     /// `chain_id` goes into each signed transaction. [`crate::service::Service::check_chain`]
-    /// compares it with `eth_chainId`.
+    /// compares it with `eth_chainId`. `block_tag` is the tag of
+    /// [`Chain::confirmed_block`].
     pub fn new(
         rpc_url: &str,
         private_key: Option<&str>,
         chain_id: u64,
+        block_tag: BlockTag,
     ) -> Result<Self, ChainError> {
         let url = rpc_url
             .parse()
@@ -70,6 +75,7 @@ impl RpcChain {
             provider,
             signer,
             chain_id,
+            block_tag,
         })
     }
 
@@ -130,16 +136,22 @@ impl Chain for RpcChain {
         self.provider.get_chain_id().await.map_err(rpc_error)
     }
 
-    async fn finalized_block(&self) -> Result<BlockRef, ChainError> {
-        match self.block(BlockNumberOrTag::Finalized).await {
+    async fn confirmed_block(&self) -> Result<BlockRef, ChainError> {
+        let tag = match self.block_tag {
+            BlockTag::Finalized => BlockNumberOrTag::Finalized,
+            BlockTag::Safe => BlockNumberOrTag::Safe,
+            BlockTag::Latest => BlockNumberOrTag::Latest,
+        };
+        match self.block(tag).await {
             Ok(Some(block)) => Ok(block),
-            Ok(None) => Err(ChainError::FinalityUnavailable(
-                "the RPC returned no finalized block".to_owned(),
-            )),
+            Ok(None) => Err(ChainError::FinalityUnavailable(format!(
+                "the RPC returned no {} block",
+                self.block_tag
+            ))),
             // A JSON-RPC error response means that the node does not support the tag.
             Err(RpcError::ErrorResp(payload)) => Err(ChainError::FinalityUnavailable(format!(
-                "the RPC rejected the finalized tag: {}",
-                payload.message
+                "the RPC rejected the {} tag: {}",
+                self.block_tag, payload.message
             ))),
             Err(other) => Err(rpc_error(other)),
         }
