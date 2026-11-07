@@ -8,7 +8,7 @@
 use anon_credit_crypto::verify_ed25519;
 use anon_credit_protocol::admin::{AdminSnapshot, GatewayEvent, SessionDetail};
 use anon_credit_protocol::api::{
-    DemoPeerResponse, GatewayConfigResponse, GatewayErrorBody, OpenChunkRequest, OpenChunkResponse,
+    DemoPeerResponse, GatewayConfigResponse, GatewayErrorBody, OpenChunkPath, OpenChunkResponse,
     OpenRequest, OpenResponse, PricesResponse, RootsResponse, SPEND_RESPONSE_HEADERS, SpendRequest,
     StatusRequest, StatusResponse,
 };
@@ -153,8 +153,27 @@ fn status_message_matches_shared_vectors() {
 struct ApiFile {
     price_table: PriceTableVector,
     spend_response_headers: Vec<String>,
+    open_chunk_paths: ChunkPathVectors,
     valid: serde_json::Map<String, Value>,
     invalid: Vec<InvalidCase>,
+}
+
+#[derive(Deserialize)]
+struct ChunkPathVectors {
+    valid: Vec<ValidChunkPath>,
+    invalid: Vec<InvalidChunkPath>,
+}
+
+#[derive(Deserialize)]
+struct ValidChunkPath {
+    path: String,
+    target: OpenChunkPath,
+}
+
+#[derive(Deserialize)]
+struct InvalidChunkPath {
+    name: String,
+    path: String,
 }
 
 #[derive(Deserialize)]
@@ -191,7 +210,7 @@ fn parse_as(kind: &str, value: &Value) -> Result<(), String> {
     match base {
         "open_request" => round_trip::<OpenRequest>(value),
         "open_response" => round_trip::<OpenResponse>(value),
-        "open_chunk_request" => round_trip::<OpenChunkRequest>(value),
+        "open_chunk_path" => round_trip::<OpenChunkPath>(value),
         "open_chunk_response" => round_trip::<OpenChunkResponse>(value),
         "spend_request" => round_trip::<SpendRequest>(value),
         "status_request" => round_trip::<StatusRequest>(value),
@@ -243,6 +262,24 @@ fn price_table_matches_shared_vector() {
         file.price_table.table.hash(),
         file.price_table.price_table_hash
     );
+}
+
+#[test]
+fn chunk_paths_match_shared_vectors() {
+    let file: ApiFile = serde_json::from_str(API).unwrap();
+    assert!(!file.open_chunk_paths.valid.is_empty());
+    for case in &file.open_chunk_paths.valid {
+        assert_eq!(OpenChunkPath::parse(&case.path), Ok(case.target));
+        assert_eq!(case.target.to_path(), case.path);
+    }
+    assert!(!file.open_chunk_paths.invalid.is_empty());
+    for case in &file.open_chunk_paths.invalid {
+        assert!(
+            OpenChunkPath::parse(&case.path).is_err(),
+            "chunk path case {} must fail",
+            case.name
+        );
+    }
 }
 
 #[test]

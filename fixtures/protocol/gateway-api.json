@@ -17,6 +17,95 @@
     "x-anon-next-seq",
     "x-anon-replayed"
   ],
+  "open_chunk_paths": {
+    "description": "PUT /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}. The body is the raw chunk bytes. Each valid path must parse to its target and the target must render to the same path. Each invalid path must fail to parse.",
+    "valid": [
+      {
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/19/1/0",
+        "target": {
+          "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+          "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
+          "total_bytes": 19,
+          "chunk_count": 1,
+          "chunk_index": 0
+        }
+      },
+      {
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/318335/8/7",
+        "target": {
+          "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+          "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
+          "total_bytes": 318335,
+          "chunk_count": 8,
+          "chunk_index": 7
+        }
+      },
+      {
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/4294967295/4294967295/4294967295",
+        "target": {
+          "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+          "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
+          "total_bytes": 4294967295,
+          "chunk_count": 4294967295,
+          "chunk_index": 4294967295
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "prefix_only",
+        "path": "/v1/open/chunks"
+      },
+      {
+        "name": "old_json_route",
+        "path": "/v1/open/chunks/"
+      },
+      {
+        "name": "missing_index",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/19/1"
+      },
+      {
+        "name": "trailing_slash",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/19/1/0/"
+      },
+      {
+        "name": "uppercase_hex",
+        "path": "/v1/open/chunks/0x0A4352FC0599468AFE13507D3E3FC69D0B81BD1A9EABF114C3168F8971DB8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/19/1/0"
+      },
+      {
+        "name": "no_hex_prefix",
+        "path": "/v1/open/chunks/0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/19/1/0"
+      },
+      {
+        "name": "short_digest",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d/19/1/0"
+      },
+      {
+        "name": "leading_zero",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/019/1/0"
+      },
+      {
+        "name": "plus_sign",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/+19/1/0"
+      },
+      {
+        "name": "negative_index",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/19/1/-1"
+      },
+      {
+        "name": "above_u32",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/4294967296/1/0"
+      },
+      {
+        "name": "empty_number",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12//1/0"
+      },
+      {
+        "name": "query",
+        "path": "/v1/open/chunks/0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861/0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12/19/1/0?x=1"
+      }
+    ]
+  },
   "valid": {
     "open_request": {
       "protocol_version": 1,
@@ -48,13 +137,12 @@
       },
       "signature": "VYkbHx+97JU9roaGfKLawZ9HiiBFg+BGyxn11NU27cq09ReaOcQ/no3QGasEricuZcV6vDAEq4vIBgB3UOagDg=="
     },
-    "open_chunk_request": {
+    "open_chunk_path": {
       "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
       "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
       "total_bytes": 19,
-      "chunk_index": 0,
       "chunk_count": 1,
-      "data": "eyJwcm9vZiI6ImV4YW1wbGUifQ=="
+      "chunk_index": 0
     },
     "open_chunk_response": {
       "received_chunks": 1,
@@ -172,7 +260,7 @@
         "response_retention_seconds": 60,
         "batch_lock_wait_ms": 5000,
         "open_upload_max_bytes": 4194304,
-        "open_upload_chunk_bytes": 24576,
+        "open_upload_chunk_bytes": 40000,
         "open_upload_chunk_body_bytes": 40000,
         "open_upload_max_chunks": 256,
         "open_upload_ttl_seconds": 600,
@@ -1155,39 +1243,47 @@
     },
     {
       "name": "unknown_field",
-      "type": "open_chunk_request",
+      "type": "open_chunk_path",
       "value": {
         "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
         "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
         "total_bytes": 19,
-        "chunk_index": 0,
         "chunk_count": 1,
-        "data": "eyJwcm9vZiI6ImV4YW1wbGUifQ==",
-        "extra": 1
-      }
-    },
-    {
-      "name": "data_url_safe_base64",
-      "type": "open_chunk_request",
-      "value": {
-        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
-        "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
-        "total_bytes": 3,
         "chunk_index": 0,
-        "chunk_count": 1,
-        "data": "-_8="
+        "data": "eyJwcm9vZiI6ImV4YW1wbGUifQ=="
       }
     },
     {
       "name": "chunk_index_negative",
-      "type": "open_chunk_request",
+      "type": "open_chunk_path",
       "value": {
         "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
         "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
         "total_bytes": 19,
-        "chunk_index": -1,
         "chunk_count": 1,
-        "data": "eyJwcm9vZiI6ImV4YW1wbGUifQ=="
+        "chunk_index": -1
+      }
+    },
+    {
+      "name": "batch_id_uppercase",
+      "type": "open_chunk_path",
+      "value": {
+        "batch_id": "0x0A4352FC0599468AFE13507D3E3FC69D0B81BD1A9EABF114C3168F8971DB8861",
+        "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
+        "total_bytes": 19,
+        "chunk_count": 1,
+        "chunk_index": 0
+      }
+    },
+    {
+      "name": "total_bytes_above_u32",
+      "type": "open_chunk_path",
+      "value": {
+        "batch_id": "0x0a4352fc0599468afe13507d3e3fc69d0b81bd1a9eabf114c3168f8971db8861",
+        "proof_sha256": "0x3c0e6026f23dc576f5a2163df1b6dd45292b37ccd26ead35179a16ba465d0d12",
+        "total_bytes": 4294967296,
+        "chunk_count": 1,
+        "chunk_index": 0
       }
     },
     {

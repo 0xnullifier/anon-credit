@@ -37,11 +37,16 @@ const u16Schema = z.number().int().min(0).max(MAX_U16);
 const u32Schema = z.number().int().min(0).max(MAX_U32);
 const safeChainIdSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 
-// Largest raw data of one PUT /v1/open/chunks chunk: 24 KiB.
-export const OPEN_CHUNK_MAX_BYTES = 24 * 1024;
-// Largest PUT /v1/open/chunks body. A chunk with OPEN_CHUNK_MAX_BYTES of data is about
-// 33,000 bytes of JSON. The Nox worker refuses bodies above about 48,000 bytes.
-export const OPEN_CHUNK_BODY_LIMIT_BYTES = 40_000;
+// Path prefix of the chunk route. The full path is
+// /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}.
+export const OPEN_CHUNK_PATH_PREFIX = "/v1/open/chunks";
+// Largest raw data of one PUT /v1/open/chunks/... chunk: 40,000 bytes. The request body is
+// the raw chunk bytes (application/octet-stream), so this is also the body size.
+export const OPEN_CHUNK_MAX_BYTES = 40_000;
+// Largest PUT /v1/open/chunks/... body. The body is the raw chunk, thus the limit is
+// OPEN_CHUNK_MAX_BYTES. The Nox worker refuses requests above about 48,000 bytes; the path and
+// the headers use less than 1,000 bytes.
+export const OPEN_CHUNK_BODY_LIMIT_BYTES = OPEN_CHUNK_MAX_BYTES;
 
 // Encoding of the proof bytes of a chunked upload.
 // "np": binary ProveKit proof. "json": JSON proof as the browser prover emits it.
@@ -58,19 +63,47 @@ export const proofUploadSchema = z.strictObject({
 });
 export type ProofUpload = z.output<typeof proofUploadSchema>;
 
-// PUT /v1/open/chunks request body: one chunk of a proof upload. The gateway keys an upload by
-// (batch_id, proof_sha256). Chunks can arrive in any order.
-export const openChunkRequestSchema = z.strictObject({
+// Path parameters of PUT /v1/open/chunks/...: the identity of one chunk of a proof upload.
+// The request body is the raw chunk bytes (1 to OPEN_CHUNK_MAX_BYTES). The gateway keys an
+// upload by (batch_id, proof_sha256). Chunks can arrive in any order. The path has no secret:
+// the batch ID and the digest are public to the gateway. The object form is for the shared
+// fixtures; the wire form is the path (openChunkPath, parseOpenChunkPath).
+export const openChunkPathSchema = z.strictObject({
   batch_id: hex32TextSchema,
   proof_sha256: hex32TextSchema,
   total_bytes: u32Schema,
-  chunk_index: u32Schema,
   chunk_count: u32Schema,
-  data: base64TextSchema,
+  chunk_index: u32Schema,
 });
-export type OpenChunkRequest = z.output<typeof openChunkRequestSchema>;
+export type OpenChunkPath = z.output<typeof openChunkPathSchema>;
 
-// PUT /v1/open/chunks response body.
+// A canonical decimal u32: "0", or a digit 1 to 9 and more digits; at most 2^32 - 1.
+const decimalU32Pattern = /^(0|[1-9][0-9]{0,9})$/;
+
+// The request path of one chunk.
+export function openChunkPath(target: OpenChunkPath): string {
+  const checked = openChunkPathSchema.parse(target);
+  return `${OPEN_CHUNK_PATH_PREFIX}/${checked.batch_id}/${checked.proof_sha256}/${checked.total_bytes}/${checked.chunk_count}/${checked.chunk_index}`;
+}
+
+// Read a full chunk request path (no query, no trailing slash). Return null if it is not valid.
+export function parseOpenChunkPath(path: string): OpenChunkPath | null {
+  if (!path.startsWith(`${OPEN_CHUNK_PATH_PREFIX}/`)) return null;
+  const segments = path.slice(OPEN_CHUNK_PATH_PREFIX.length + 1).split("/");
+  const [batchId, proofSha256, totalBytes, chunkCount, chunkIndex] = segments;
+  if (segments.length !== 5 || totalBytes === undefined || chunkCount === undefined || chunkIndex === undefined) return null;
+  if (![totalBytes, chunkCount, chunkIndex].every((text) => decimalU32Pattern.test(text))) return null;
+  const parsed = openChunkPathSchema.safeParse({
+    batch_id: batchId,
+    proof_sha256: proofSha256,
+    total_bytes: Number(totalBytes),
+    chunk_count: Number(chunkCount),
+    chunk_index: Number(chunkIndex),
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+// PUT /v1/open/chunks/... response body.
 export const openChunkResponseSchema = z.strictObject({
   received_chunks: u32Schema,
   complete: z.boolean(),

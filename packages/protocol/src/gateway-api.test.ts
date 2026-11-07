@@ -13,11 +13,13 @@ import {
   gatewayErrorBodySchema,
   OPEN_CHUNK_BODY_LIMIT_BYTES,
   OPEN_CHUNK_MAX_BYTES,
-  openChunkRequestSchema,
+  openChunkPath,
+  openChunkPathSchema,
   openChunkResponseSchema,
   openMessageFromRequest,
   openRequestSchema,
   openResponseSchema,
+  parseOpenChunkPath,
   pricesResponseSchema,
   readSpendResponseHeaders,
   rootsResponseSchema,
@@ -33,6 +35,10 @@ import { decodeBase64, encodeBase64, isCanonicalBase64 } from "./wire.ts";
 const fileSchema = z.object({
   price_table: z.object({ table: priceTableSchema, canonical_json: z.string(), price_table_hash: z.string() }),
   spend_response_headers: z.array(z.string()),
+  open_chunk_paths: z.object({
+    valid: z.array(z.object({ path: z.string(), target: openChunkPathSchema })).min(1),
+    invalid: z.array(z.object({ name: z.string(), path: z.string() })).min(1),
+  }),
   valid: z.record(z.string(), z.json()),
   invalid: z.array(z.object({ name: z.string(), type: z.string(), value: z.json() })).min(1),
 });
@@ -61,8 +67,8 @@ function parseAs(kind: string, value: Json): Outcome {
   switch (kind.replace(/_with(out)?_receipt$/, "").replace(/_demo$/, "").replace(/_upload$/, "")) {
     case "open_request":
       return outcome(openRequestSchema.safeParse(value));
-    case "open_chunk_request":
-      return outcome(openChunkRequestSchema.safeParse(value));
+    case "open_chunk_path":
+      return outcome(openChunkPathSchema.safeParse(value));
     case "open_chunk_response":
       return outcome(openChunkResponseSchema.safeParse(value));
     case "open_response":
@@ -131,19 +137,28 @@ describe("gateway api shared examples", () => {
     expect("proof_upload" in upload && !("proof" in upload)).toBe(true);
   });
 
-  it("keeps the largest chunk envelope below the body limit", () => {
-    const chunk = openChunkRequestSchema.parse({
+  it("renders and parses the shared chunk paths", () => {
+    for (const vector of file.open_chunk_paths.valid) {
+      expect(openChunkPath(vector.target)).toBe(vector.path);
+      expect(parseOpenChunkPath(vector.path)).toEqual(vector.target);
+    }
+    for (const vector of file.open_chunk_paths.invalid) {
+      expect(parseOpenChunkPath(vector.path), vector.name).toBeNull();
+    }
+  });
+
+  it("keeps the chunk body and the path below the Nox margin", () => {
+    // The body is the raw chunk. The path and the headers must fit in 48,000 - 40,000 bytes.
+    expect(OPEN_CHUNK_BODY_LIMIT_BYTES).toBe(OPEN_CHUNK_MAX_BYTES);
+    expect(OPEN_CHUNK_BODY_LIMIT_BYTES).toBeLessThanOrEqual(44_000);
+    const largest = openChunkPath({
       batch_id: `0x${"ff".repeat(32)}`,
       proof_sha256: `0x${"ff".repeat(32)}`,
       total_bytes: 4_294_967_295,
-      chunk_index: 4_294_967_295,
       chunk_count: 4_294_967_295,
-      data: encodeBase64(new Uint8Array(OPEN_CHUNK_MAX_BYTES).fill(0xff)),
+      chunk_index: 4_294_967_295,
     });
-    // The envelope is ASCII, so the string length is the byte length.
-    const size = JSON.stringify(chunk).length;
-    expect(size).toBeLessThan(OPEN_CHUNK_BODY_LIMIT_BYTES);
-    expect(OPEN_CHUNK_BODY_LIMIT_BYTES).toBeLessThanOrEqual(40_000);
+    expect(largest.length).toBeLessThan(200);
   });
 });
 

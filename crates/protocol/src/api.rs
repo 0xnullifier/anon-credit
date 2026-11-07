@@ -28,12 +28,18 @@ pub const HEADER_REPLAYED: &str = "x-anon-replayed";
 /// All `X-Anon-*` response headers. CORS must expose them.
 pub const SPEND_RESPONSE_HEADERS: [&str; 3] = [HEADER_REMAINING, HEADER_NEXT_SEQ, HEADER_REPLAYED];
 
-/// Largest raw data of one `PUT /v1/open/chunks` chunk: 24 KiB.
-pub const OPEN_CHUNK_MAX_BYTES: usize = 24 * 1024;
+/// Path prefix of the chunk route. The full path is
+/// `/v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}`.
+pub const OPEN_CHUNK_PATH_PREFIX: &str = "/v1/open/chunks";
 
-/// Largest `PUT /v1/open/chunks` body. A chunk with [`OPEN_CHUNK_MAX_BYTES`] of data is
-/// about 33,000 bytes of JSON. The Nox worker refuses bodies above about 48,000 bytes.
-pub const OPEN_CHUNK_BODY_LIMIT_BYTES: usize = 40_000;
+/// Largest raw data of one `PUT /v1/open/chunks/...` chunk: 40,000 bytes. The request body
+/// is the raw chunk bytes (`application/octet-stream`), so this is also the body size.
+pub const OPEN_CHUNK_MAX_BYTES: usize = 40_000;
+
+/// Largest `PUT /v1/open/chunks/...` body. The body is the raw chunk, thus the limit is
+/// [`OPEN_CHUNK_MAX_BYTES`]. The Nox worker refuses requests above about 48,000 bytes; the
+/// path and the headers use less than 1,000 bytes.
+pub const OPEN_CHUNK_BODY_LIMIT_BYTES: usize = OPEN_CHUNK_MAX_BYTES;
 
 /// Encoding of the proof bytes of a chunked upload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -60,7 +66,7 @@ impl ProofEncoding {
     }
 }
 
-/// Reference to a complete chunked proof upload (`PUT /v1/open/chunks`).
+/// Reference to a complete chunked proof upload (`PUT /v1/open/chunks/...`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProofUpload {
@@ -72,28 +78,118 @@ pub struct ProofUpload {
     pub proof_encoding: ProofEncoding,
 }
 
-/// `PUT /v1/open/chunks` request body: one chunk of a proof upload.
+/// Path parameters of `PUT /v1/open/chunks/...`: the identity of one chunk of a proof upload.
 ///
-/// The gateway keys an upload by `(batch_id, proof_sha256)`. The chunks can arrive in any
-/// order. The proof bytes are the chunk data in `chunk_index` order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// The request body is the raw chunk bytes: 1 to [`OPEN_CHUNK_MAX_BYTES`] bytes. The gateway
+/// keys an upload by `(batch_id, proof_sha256)`. The chunks can arrive in any order. The proof
+/// bytes are the chunk bodies in `chunk_index` order. The path has no secret: the batch ID
+/// and the digest are public to the gateway.
+///
+/// The JSON form (serde) is for the shared fixtures only. The wire form is the path
+/// ([`OpenChunkPath::to_path`], [`OpenChunkPath::parse`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OpenChunkRequest {
+pub struct OpenChunkPath {
     /// Public batch ID of the open request that uses the upload.
     pub batch_id: Bytes32,
     /// SHA-256 of all uploaded bytes.
     pub proof_sha256: Bytes32,
     /// Length of all uploaded bytes.
     pub total_bytes: u32,
-    /// Index of this chunk, from 0.
-    pub chunk_index: u32,
     /// Number of chunks of the upload.
     pub chunk_count: u32,
-    /// Chunk bytes: 1 to [`OPEN_CHUNK_MAX_BYTES`] bytes.
-    pub data: Base64Bytes,
+    /// Index of this chunk, from 0.
+    pub chunk_index: u32,
 }
 
-/// `PUT /v1/open/chunks` response body.
+/// Failure to read a chunk path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ChunkPathError {
+    /// The path does not start with [`OPEN_CHUNK_PATH_PREFIX`] or has the wrong number of
+    /// segments.
+    #[error(
+        "chunk path must be /v1/open/chunks/{{batch_id}}/{{proof_sha256}}/{{total_bytes}}/{{chunk_count}}/{{chunk_index}}"
+    )]
+    Shape,
+    /// A digest segment is not canonical lowercase hex of 32 bytes.
+    #[error("chunk path batch_id and proof_sha256 must be canonical lowercase hex of 32 bytes")]
+    Hex,
+    /// A number segment is not a canonical decimal `u32`.
+    #[error(
+        "chunk path total_bytes, chunk_count, and chunk_index must be decimal u32 values without leading zeros"
+    )]
+    Number,
+}
+
+/// Read a canonical decimal `u32`: `0`, or a digit 1 to 9 and more digits. No sign, no
+/// leading zero, at most 2^32 - 1.
+fn decimal_u32(text: &str) -> Result<u32, ChunkPathError> {
+    let canonical = !text.is_empty()
+        && text.bytes().all(|b| b.is_ascii_digit())
+        && (text == "0" || !text.starts_with('0'));
+    if !canonical {
+        return Err(ChunkPathError::Number);
+    }
+    text.parse::<u32>().map_err(|_| ChunkPathError::Number)
+}
+
+impl OpenChunkPath {
+    /// The request path of this chunk.
+    pub fn to_path(&self) -> String {
+        format!(
+            "{OPEN_CHUNK_PATH_PREFIX}/{}/{}/{}/{}/{}",
+            self.batch_id.to_hex(),
+            self.proof_sha256.to_hex(),
+            self.total_bytes,
+            self.chunk_count,
+            self.chunk_index
+        )
+    }
+
+    /// Read the five path segments after [`OPEN_CHUNK_PATH_PREFIX`].
+    pub fn from_segments(
+        batch_id: &str,
+        proof_sha256: &str,
+        total_bytes: &str,
+        chunk_count: &str,
+        chunk_index: &str,
+    ) -> Result<Self, ChunkPathError> {
+        Ok(Self {
+            batch_id: Bytes32::from_hex(batch_id).map_err(|_| ChunkPathError::Hex)?,
+            proof_sha256: Bytes32::from_hex(proof_sha256).map_err(|_| ChunkPathError::Hex)?,
+            total_bytes: decimal_u32(total_bytes)?,
+            chunk_count: decimal_u32(chunk_count)?,
+            chunk_index: decimal_u32(chunk_index)?,
+        })
+    }
+
+    /// Read a full request path (no query, no trailing slash).
+    pub fn parse(path: &str) -> Result<Self, ChunkPathError> {
+        let rest = path
+            .strip_prefix(OPEN_CHUNK_PATH_PREFIX)
+            .and_then(|rest| rest.strip_prefix('/'))
+            .ok_or(ChunkPathError::Shape)?;
+        let segments: Vec<&str> = rest.split('/').collect();
+        match segments.as_slice() {
+            [
+                batch_id,
+                proof_sha256,
+                total_bytes,
+                chunk_count,
+                chunk_index,
+            ] => Self::from_segments(
+                batch_id,
+                proof_sha256,
+                total_bytes,
+                chunk_count,
+                chunk_index,
+            ),
+            _ => Err(ChunkPathError::Shape),
+        }
+    }
+}
+
+/// `PUT /v1/open/chunks/...` response body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpenChunkResponse {
@@ -471,9 +567,9 @@ pub struct GatewayLimits {
     pub batch_lock_wait_ms: u32,
     /// Largest chunked proof upload in bytes. Also the largest proof after decompression.
     pub open_upload_max_bytes: u32,
-    /// Largest raw data of one chunk in bytes.
+    /// Largest raw data of one chunk in bytes. The client plans its chunks with this value.
     pub open_upload_chunk_bytes: u32,
-    /// Largest `PUT /v1/open/chunks` body in bytes.
+    /// Largest `PUT /v1/open/chunks/...` body in bytes.
     pub open_upload_chunk_body_bytes: u32,
     /// Largest number of chunks of one upload.
     pub open_upload_max_chunks: u32,
@@ -610,23 +706,84 @@ mod tests {
         assert_eq!(back.code, ErrorCode::Busy);
     }
     #[test]
-    fn largest_chunk_envelope_is_below_the_body_limit() {
-        let chunk = OpenChunkRequest {
-            batch_id: Bytes32([0xff; 32]),
+    fn chunk_path_round_trip_and_strict_parsing() {
+        let path = OpenChunkPath {
+            batch_id: Bytes32([0x0a; 32]),
             proof_sha256: Bytes32([0xff; 32]),
-            total_bytes: u32::MAX,
-            chunk_index: u32::MAX,
-            chunk_count: u32::MAX,
-            data: Base64Bytes(vec![0xff; OPEN_CHUNK_MAX_BYTES]),
+            total_bytes: 318_335,
+            chunk_count: 8,
+            chunk_index: 7,
         };
-        let json = serde_json::to_vec(&chunk).unwrap();
-        assert!(
-            json.len() < OPEN_CHUNK_BODY_LIMIT_BYTES,
-            "{} bytes",
-            json.len()
+        let text = path.to_path();
+        assert_eq!(
+            text,
+            format!(
+                "/v1/open/chunks/0x{}/0x{}/318335/8/7",
+                "0a".repeat(32),
+                "ff".repeat(32)
+            )
         );
-        // The Nox worker refused bodies above about 48,000 bytes.
-        const { assert!(OPEN_CHUNK_BODY_LIMIT_BYTES <= 40_000) };
+        assert_eq!(OpenChunkPath::parse(&text), Ok(path));
+        let largest = OpenChunkPath {
+            total_bytes: u32::MAX,
+            chunk_count: u32::MAX,
+            chunk_index: u32::MAX,
+            ..path
+        };
+        assert_eq!(OpenChunkPath::parse(&largest.to_path()), Ok(largest));
+        // The path is short; with the headers it stays far below the Nox margin of
+        // 48,000 - OPEN_CHUNK_BODY_LIMIT_BYTES bytes.
+        assert!(largest.to_path().len() < 200);
+        const { assert!(OPEN_CHUNK_BODY_LIMIT_BYTES <= 44_000) };
+        const { assert!(OPEN_CHUNK_BODY_LIMIT_BYTES >= OPEN_CHUNK_MAX_BYTES) };
+
+        let hex = |b: &str| format!("0x{}", b.repeat(32));
+        let bad = [
+            ("/v1/open/chunks".to_owned(), ChunkPathError::Shape),
+            (
+                format!("/v1/open/chunks/{}/{}/1/1", hex("0a"), hex("ff")),
+                ChunkPathError::Shape,
+            ),
+            (
+                format!("/v1/open/chunks/{}/{}/1/1/0/", hex("0a"), hex("ff")),
+                ChunkPathError::Shape,
+            ),
+            (
+                format!("/v1/open/chunk/{}/{}/1/1/0", hex("0a"), hex("ff")),
+                ChunkPathError::Shape,
+            ),
+            (
+                format!("/v1/open/chunks/{}/{}/1/1/0", hex("0A"), hex("ff")),
+                ChunkPathError::Hex,
+            ),
+            (
+                format!("/v1/open/chunks/{}/{}/1/1/0", "0a".repeat(32), hex("ff")),
+                ChunkPathError::Hex,
+            ),
+            (
+                format!("/v1/open/chunks/{}/{}/01/1/0", hex("0a"), hex("ff")),
+                ChunkPathError::Number,
+            ),
+            (
+                format!("/v1/open/chunks/{}/{}/+1/1/0", hex("0a"), hex("ff")),
+                ChunkPathError::Number,
+            ),
+            (
+                format!("/v1/open/chunks/{}/{}/1/1/-1", hex("0a"), hex("ff")),
+                ChunkPathError::Number,
+            ),
+            (
+                format!("/v1/open/chunks/{}/{}/4294967296/1/0", hex("0a"), hex("ff")),
+                ChunkPathError::Number,
+            ),
+            (
+                format!("/v1/open/chunks/{}/{}//1/0", hex("0a"), hex("ff")),
+                ChunkPathError::Number,
+            ),
+        ];
+        for (text, error) in bad {
+            assert_eq!(OpenChunkPath::parse(&text), Err(error), "{text}");
+        }
     }
 
     fn open_json(proof: Option<&str>, upload: bool) -> String {
