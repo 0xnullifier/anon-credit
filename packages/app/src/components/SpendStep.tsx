@@ -42,10 +42,15 @@ export interface ConsoleEntry {
   readonly error: string | null;
 }
 
-function defaultParams(method: string): string {
+function defaultParams(method: string, saleAddress: string, purchaseTx: string | null): string {
   switch (method) {
     case "eth_getBalance":
       return JSON.stringify([TEST_ADDRESS, "latest"]);
+    case "eth_call":
+      // CreditSale.batchPriceWei(): the price of one batch, read from the sale contract.
+      return JSON.stringify([{ to: saleAddress, data: "0x11b2d3c6" }, "latest"]);
+    case "eth_getTransactionReceipt":
+      return JSON.stringify([purchaseTx ?? `0x${"0".repeat(64)}`]);
     default:
       return "[]";
   }
@@ -73,11 +78,14 @@ export function SpendStep({
   workbench,
   batchId,
   now,
+  purchaseTx,
   onSpent,
 }: {
   readonly workbench: Workbench | null;
   readonly batchId: string | null;
   readonly now: number;
+  // Transaction hash of the last purchase: the default parameter of eth_getTransactionReceipt.
+  readonly purchaseTx: string | null;
   readonly onSpent: () => void;
 }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -203,7 +211,7 @@ export function SpendStep({
             disabled={busy}
             onChange={(event) => {
               setMethod(event.target.value);
-              setParams(defaultParams(event.target.value));
+              setParams(defaultParams(event.target.value, workbench?.client.deployment.sale_address ?? "", purchaseTx));
             }}
           >
             {Object.entries(prices).map(([name, cost]) => (

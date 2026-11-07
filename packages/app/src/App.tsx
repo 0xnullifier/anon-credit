@@ -158,7 +158,7 @@ export function App() {
       <BuyStep workbench={workbench} now={now} onPurchase={onPurchase} />
       <InclusionStep workbench={workbench} purchase={purchase} now={now} onEligible={onEligible} />
       <OpenStep workbench={workbench} inclusion={inclusion} now={now} onOpened={onOpened} />
-      <SpendStep workbench={workbench} batchId={spendBatchId} now={now} onSpent={refreshBatches} />
+      <SpendStep workbench={workbench} batchId={spendBatchId} now={now} purchaseTx={purchase?.txHash ?? null} onSpent={refreshBatches} />
       <BackupStep workbench={workbench} passphrase={passphrase} onRestored={refreshBatches} />
       <GatewayView workbench={workbench} purchase={purchase} opened={opened} batch={activeBatch} />
       {workbench === null ? null : (

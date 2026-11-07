@@ -18,6 +18,15 @@ function proverChoice(text: string): ProverChoice {
   }
 }
 
+// Delete the IndexedDB store of this browser. The page reloads with an empty store. A wrong
+// passphrase cannot open an existing store: this is the way out when the passphrase is lost.
+function resetStore(name: string): void {
+  const request = indexedDB.deleteDatabase(name);
+  request.onsuccess = () => window.location.reload();
+  request.onerror = () => window.location.reload();
+  request.onblocked = () => window.location.reload();
+}
+
 function setupState(connecting: boolean, workbench: Workbench | null): string {
   switch (true) {
     case connecting:
@@ -65,6 +74,7 @@ export function Setup({
   readonly error: string;
 }) {
   const [passphrase, setPassphrase] = useState("");
+  const [resetArmed, setResetArmed] = useState(false);
   const locked = workbench !== null || connecting;
   const canConnect = passphrase.length >= 8 && !locked;
   return (
@@ -113,9 +123,26 @@ export function Setup({
         </label>
         <span className="actions">
           {workbench === null ? (
-            <button type="submit" className="primary" disabled={!canConnect}>
-              {connecting ? "connecting…" : "unlock and connect"}
-            </button>
+            <>
+              <button type="submit" className="primary" disabled={!canConnect}>
+                {connecting ? "connecting…" : "unlock and connect"}
+              </button>
+              <button
+                type="button"
+                disabled={connecting}
+                title="Delete the encrypted store of this browser. Batches that are not backed up are lost."
+                onClick={() => {
+                  if (resetArmed) {
+                    resetStore(settings.storageName);
+                    setResetArmed(false);
+                    return;
+                  }
+                  setResetArmed(true);
+                }}
+              >
+                {resetArmed ? "confirm: delete the local store" : "reset local store"}
+              </button>
+            </>
           ) : (
             <button type="button" onClick={onDisconnect}>
               disconnect
