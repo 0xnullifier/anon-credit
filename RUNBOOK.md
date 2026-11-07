@@ -83,7 +83,7 @@ Fund the issuer key with Sepolia ETH. The issuer sends one `postRoot` transactio
 deployer key, fund it too.
 
 ```sh
-export SEPOLIA_RPC_URL=https://...          # must support the "finalized" block tag
+export SEPOLIA_RPC_URL=https://...          # must support the BLOCK_TAG tag (latest in the demo)
 export ISSUER_PRIVATE_KEY=0x...             # root publisher
 # optional: DEPLOYER_PRIVATE_KEY=0x...  BATCH_PRICE_WEI=100000000000000  EPOCH_SECONDS=30
 # optional: ETHERSCAN_API_KEY=...       (turns on forge verify-contract)
@@ -125,7 +125,9 @@ Set at least these values:
 |---|---|
 | `DEPLOYMENT_CONFIG` | `config/deployment.testnet.toml` (printed by the helper) |
 | `ISSUER_START_BLOCK` | printed by the helper |
-| `SEPOLIA_RPC_URL` | Sepolia RPC with the `finalized` tag. Secret if it has a key. |
+| `SEPOLIA_RPC_URL` | Sepolia RPC with the block tag of `BLOCK_TAG`. Secret if it has a key. |
+| `BLOCK_TAG` | `latest` (demo profile). The issuer and the gateway read the chain at this tag. If it is empty, `run-services.sh` sets `latest`. `latest` trades reorg safety for speed: a reorganization can remove a purchase or a root that the services already used. Use it only on a testnet. Production uses `finalized`. |
+| `ISSUER_PUBLISH_POLL_SECONDS`, `GATEWAY_ROOT_POLL_SECONDS` | `2` and `3` in the demo example (production: `5` and `10`). Short passes keep the root wait near one epoch. |
 | `ISSUER_PRIVATE_KEY` | root publisher key. Secret. |
 | `GATEWAY_UPSTREAM_RPC_URL` | Sepolia RPC for the paid reads. Secret if it has a key. |
 | `GATEWAY_ADMIN_TOKEN` | the random token. Secret. |
@@ -167,12 +169,14 @@ tooling/dev/stop-services.sh                # stops them (data/run/latest)
 `nohup`. Logs and process IDs go to `data/run/<UTC time>/` (`RUN_DIR` changes it;
 `data/run/latest` points to the newest). Health checks: sidecar `GET /health` (the key digest
 must be the deployment `verifier_artifact_hash`), issuer `GET /v1/epoch`, gateway `GET /v1/config`
-(its `deployment_id` must equal the issuer value), and the admin snapshot with the token. If a
-check fails, the script stops what it started and exits 1. `stop-services.sh` stops only the
+(its `deployment_id` must equal the issuer value, and both must report the same `block_tag`), and
+the admin snapshot with the token. If the env file has no `BLOCK_TAG`, the script sets
+`BLOCK_TAG=latest` (the testnet demo) and prints a warning. If a check fails, the script stops
+what it started and exits 1. `stop-services.sh` stops only the
 processes in `services.pids`.
 
-What you see: one line for each start and each ready check, then the deployment ID, the URLs,
-the log directory, and the stop command.
+What you see: one line for each start and each ready check, then the deployment ID, the block
+tag, the URLs, the log directory, and the stop command.
 
 ### HTTPS termination
 
@@ -259,9 +263,10 @@ Sign in with:
 - Token: `GATEWAY_ADMIN_TOKEN`
 
 The token stays in the `sessionStorage` of the tab and goes only in the `Authorization` header.
-What you see before the run: status `ok`, upstream chain Sepolia, current epoch, accepted roots
-(the issuer publishes one root each epoch; the first one is accepted after root finality, about
-13 minutes after the first publication), zero sessions, the proof and privacy panel with the
+What you see before the run: the marker "block tag: latest (demo)" in the header (no marker with
+`finalized`), status `ok`, upstream chain Sepolia, current epoch, accepted roots (the issuer
+publishes one root each epoch; with `latest`, the gateway accepts it a few seconds after
+`postRoot` is mined; with `finalized`, about 13 minutes later), zero sessions, the proof and privacy panel with the
 deployment ID, gateway ID, circuit ID, verifier key pin (it must say "equals the pin"), epoch
 length 30 s, IP capture on, the price table (hash check "matches the canonical encoding"), and the
 accepted roots. Click "Direct probe" in the demo comparison panel: column (a) shows your own
@@ -304,8 +309,8 @@ Console lines start with `[e2e hh:mm:ss]`. The dashboard updates within 1 s of e
 | 1. Preflight | One `ok`/`FAIL` line per check: identities, chain IDs, manifest digest, connectivity, funding, admin access. A failure stops the run before the purchase. | Nothing (the checks read only public endpoints and one snapshot). |
 | 2. Browser prover and transport | Nox ready time (4 to 5 s typical, up to 180 s), prover mode and threads, three batches made in the browser. | Nothing. |
 | 3. Purchase | `sending CreditSale.buy for 3 batches`, then the transaction hash, log index, and block. | Nothing: the gateway has no payment data. |
-| 4. Issuance | `waiting for Sepolia finality of the payment (about 13 minutes)`, then `topup pending (...)` lines every 15 s, then `issued`. | Nothing. |
-| 5. Eligible root and delay | Progress lines until a finalized root with the new leaves is accepted, then the random delay of 0 to 3 epochs. | Accepted roots: the leaf count grows by 3 in a new root. Root age stays small. |
+| 4. Issuance | `waiting for the issuance; issuance: expected at once after the purchase is mined (block tag latest ...)`, then `issued`. With `finalized`: the expected wait is about 13 minutes, with `topup pending (...)` lines every 15 s. | Nothing. |
+| 5. Eligible root and delay | `waiting for an eligible root; eligible root: expected in at most one epoch (30 s) ...`, then progress lines until the root of the insertion epoch is accepted. With `latest`, the first-use delay is 0 epochs. With `finalized`, root finality (about 13 minutes) and the random delay of 0 to 3 epochs. | Accepted roots: the leaf count grows by 3 in a new root. Root age stays small. |
 | 6. Membership path | The path is fetched on the `registry:<batch>` isolation key and checked locally. | Nothing (the path comes from the issuer). |
 | 7. Proof | Proof size (about 475 KB), proving time (about 0.2 s threaded, 0.5 s scalar on an M4 Pro). | Nothing. |
 | 8. Open batch 1 | `remaining 100, next_seq 0`. | Events `open_received` -> `open_verified` (verification time) -> `session_opened`. Health: sessions active 1. Demo comparison column (b) fills: the observed source IP of the Nox exit. |
@@ -320,18 +325,24 @@ Console lines start with `[e2e hh:mm:ss]`. The dashboard updates within 1 s of e
 
 ## 9. Expected waits
 
-| Wait | Time | Why |
-|---|---|---|
-| Nox ready | 4 to 5 s, rarely 80 s | Worker start and Nox entry dials |
-| Payment finality (step 4) | about 13 minutes | The issuer reads `Purchased` logs only up to the `finalized` block (two Sepolia epochs of 6.4 min). |
-| Epoch boundary | up to 30 s | Leaves of epoch e are in the root of e; eligible from e + 1. |
-| Root publication and root finality (step 5) | about 13 minutes | The gateway reads `RootRegistry` at the `finalized` tag. |
-| Random first-use delay (steps 5, 13, 14) | 0 to 3 epochs (0 to 90 s) | Chosen once per batch in the browser. |
-| Proof (step 7) | under 1 s | Browser ProveKit, measured |
-| Steps 8 to 15 | a few minutes | About 110 paid requests through Nox (about 2 s each) |
+The run prints the expected waits after the preflight. They follow the `block_tag` of
+`GET /v1/config`.
 
-Plan for 30 to 40 minutes from step 3 to the end. For a live audience, do steps 1 to 7 before
-the presentation, or run the presentation on a run that is already past step 5.
+| Wait | Demo (`BLOCK_TAG=latest`) | `BLOCK_TAG=finalized` | Why |
+|---|---|---|---|
+| Nox ready | 4 to 5 s, rarely 80 s | same | Worker start and Nox entry dials |
+| Payment (step 4) | the purchase block (about 12 s) | about 13 minutes | The issuer reads `Purchased` logs up to the block of `BLOCK_TAG` (finality: two Sepolia epochs of 6.4 min). |
+| Epoch boundary | up to 30 s | up to 30 s | Leaves of epoch e are in the root of e, which is published after e closes. |
+| Root publication (step 5) | about 2 blocks (24 s) plus the poll intervals | about 13 minutes | `postRoot` waits for a block after the epoch close; the gateway reads `RootRegistry` at `BLOCK_TAG`. |
+| Random first-use delay (steps 5, 13, 14) | 0 epochs | 0 to 3 epochs (0 to 90 s) | `maxFirstUseDelayEpochs`: 0 in the demo profile, 3 by default. |
+| Proof (step 7) | under 1 s | same | Browser ProveKit, measured |
+| Steps 8 to 15 | a few minutes | same | About 110 paid requests through Nox (about 2 s each) |
+
+With `latest`, a purchase opens after at most one epoch (30 s) plus chain latency: plan for
+about 5 minutes from step 3 to the end. `latest` trades reorg safety for speed; use it only on a
+testnet. With `finalized`, plan for 30 to 40 minutes. For a live audience with `finalized`, do
+steps 1 to 7 before the presentation, or run the presentation on a run that is already past
+step 5.
 
 ## 10. Demo script (4 minutes)
 
@@ -345,7 +356,8 @@ past step 5 (or done; then show the events of the run).
    age, the price table with "matches the canonical encoding", the verifier key "equals the
    pin", and IP capture "on (demo profile)". Say: the purchase was a normal Sepolia transaction;
    the issuer inserted three leaves and published a root on Sepolia; the gateway read it at the
-   finalized tag.
+   block tag in the header ("block tag: latest (demo)": no finality wait on the testnet;
+   production reads at the finalized tag).
 2. Demo comparison, column (a) (30 s). Click "Direct probe". It shows the address of this
    browser as the gateway sees it (through the HTTPS proxy: "Observed source IP", socket peer =
    proxy hop).
@@ -380,7 +392,7 @@ past step 5 (or done; then show the events of the run).
 |---|---|
 | `run-services: FAIL: ... does not have the digest that the manifest pins` | Your WASM build differs from the pinned build. See section 2. |
 | Gateway does not start: sidecar `pkv_sha256` | The sidecar key is not the deployment `verifier_artifact_hash`. Use `artifacts/batch-open/batch-open.pkv`. |
-| Issuer: `finality_unavailable` | The RPC has no `finalized` tag. Use another Sepolia RPC. |
+| Issuer: `finality_unavailable` | The RPC has no block for the `BLOCK_TAG` tag. Use another Sepolia RPC. |
 | Dashboard: "admin token is required" | Wrong token, or the token has a space. Sign out and enter it again. |
 | Dashboard probe: network error or CORS refusal | Add the dashboard origin to `GATEWAY_CORS_ORIGINS` and restart the gateway. |
 | Every event shows `127.0.0.1` | Set `GATEWAY_TRUSTED_PROXY_ADDRS` (section 5). |
