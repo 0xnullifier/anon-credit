@@ -312,15 +312,33 @@ Restore the gateway database before serving after data loss. Rotating the gatewa
 
 ## 12. RPC method table and limits
 
-The initial table is fixed for an open session. New prices affect only new sessions.
+The table is fixed for an open session. New prices affect only new sessions. The current table is version 2. Version 1 had only the first three methods, at the same units.
 
-| Method | Units |
-|---|---:|
-| `eth_chainId` | 1 |
-| `eth_blockNumber` | 1 |
-| `eth_getBalance` | 2 |
+| Method | Units | Params |
+|---|---:|---|
+| `eth_chainId` | 1 | none (`[]` or absent) |
+| `eth_blockNumber` | 1 | none (`[]` or absent) |
+| `eth_getBalance` | 2 | `[address, block]` |
+| `eth_call` | 3 | `[call object, block]` |
+| `eth_getTransactionReceipt` | 2 | `[transaction hash]` |
 
-Validate method-specific parameter counts, addresses, and block selectors before forwarding. All other methods, notifications without IDs, and request arrays are rejected. Do not support `eth_call` or `eth_getLogs` until their execution and response-size limits are specified.
+Canonical encoding (keys in byte order, no white space):
+
+```text
+{"units":{"eth_blockNumber":1,"eth_call":3,"eth_chainId":1,"eth_getBalance":2,"eth_getTransactionReceipt":2},"version":2}
+```
+
+`price_table_hash = keccak256` of it: `0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08`. The version 1 hash was `0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f`.
+
+Validate method-specific parameter counts, addresses, and block selectors before forwarding:
+
+- An address is `0x` and 40 hex digits. A transaction hash is `0x` and 64 hex digits.
+- A block is `latest`, `earliest`, `pending`, `safe`, `finalized`, or a canonical hex block number of at most 64 bits (`0x0`, or lowercase digits with no leading zero). Block hash objects are rejected.
+- The `eth_call` call object must have `to` (address). It can have `from` (address), `data` or `input` (hex bytes with an even number of digits, at most 8 KiB; not both), `value` and `gasPrice` (canonical hex quantities of at most 256 bits), and `gas` (canonical hex quantity of at most 64 bits). Each value is a string. Other members (for example `nonce`, `accessList`, `maxFeePerGas`) are rejected.
+
+All other methods, notifications without IDs, and request arrays are rejected. Do not support `eth_getLogs` until its execution and response-size limits are specified.
+
+`eth_call` execution and response size: the upstream node executes the call with its own gas and time limits. The gateway applies the upstream timeout and the upstream response limit (`GATEWAY_UPSTREAM_RESPONSE_LIMIT_BYTES`, default 1 MiB) to each call. A response above the limit is an upstream failure: `upstream_failed` (HTTP 502, retryable), no charge, and no sequence change. A JSON-RPC error object (for example a revert) with HTTP 200 is a completed call and is charged.
 
 Prototype limits: 64 KiB spend envelope, 1 MiB upstream response, 15 second upstream timeout, and two concurrent proof verifications. Make these configured limits, publish them, and test rejection before expensive work. Benchmark memory before raising them.
 
@@ -384,7 +402,7 @@ The script must:
 6. Fetch a complete membership proof over the registry transport and check it locally.
 7. Generate the batch-open proof in the browser. Record duration, proof bytes, and available memory measurements.
 8. Open the first batch through the selected transport. Assert `remaining = 100` and `next_seq = 0`.
-9. Call `eth_chainId`, `eth_blockNumber`, and `eth_getBalance`. Use a fixed public test address unrelated to the payer. Assert remaining units `99`, `98`, and `96`, with next sequences `1`, `2`, and `3`.
+9. Call `eth_chainId`, `eth_blockNumber`, `eth_getBalance`, `eth_call`, and `eth_getTransactionReceipt`. Use a fixed public test address unrelated to the payer for `eth_getBalance`. `eth_call` reads `CreditSale.batchPriceWei()`; assert the issuer price. `eth_getTransactionReceipt` reads the purchase transaction; assert its hash and status `0x1`. Assert remaining units `99`, `98`, `96`, `93`, and `91`, with next sequences `1` to `5`.
 10. Resend the exact first signed request within retention. Assert the same response and no new debit. Reuse its sequence with a different body and assert rejection.
 11. Submit an invalid signature and a sequence gap. Assert no balance change.
 12. Spend the remaining units of the first batch with one-unit reads. Assert a further spend fails and does not advance the sequence.

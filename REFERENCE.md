@@ -348,6 +348,22 @@ cargo run -p anon-credit-registry --example generate_fixtures
                                                           #   artifacts/batch-open/gate-witness.json
 ```
 
+After a change to the price table, run the price table generator. It is independent of the
+encoders under test (pure-Python Keccak-256, Ed25519 from the `cryptography` package) and gives
+the same bytes on each run. Edit `PRICE_TABLE` in the script, `PriceTable::current()`, and
+`CURRENT_PRICE_TABLE` together.
+
+```sh
+python3 tooling/fixtures/price_table.py          # fixtures/protocol/gateway-api.json (table vector,
+                                                  #   hashes, open request signatures),
+                                                  #   fixtures/protocol/open-message.json,
+                                                  #   packages/dashboard/dev/fixtures/mock-admin.json
+python3 tooling/fixtures/price_table.py --check  # exit 1 if a file is out of date
+```
+
+`fixtures/protocol/spend-message.json` has fixed test hashes, not the real table hash, so it does
+not change.
+
 `fixtures/protocol/noir-vectors` depends on `noir-lang/poseidon` `v0.4.0` (git; `v0.2.0` does not
 compile with beta.26). The `v0.4.0` sponge absorbs in the same order with the same number of
 permutations: all vectors in `poseidon2.json` are unchanged, and Rust and TypeScript still match
@@ -580,10 +596,23 @@ gateway_id (32) | batch_id (32) | nonce (32).
 
 Spend: see "Protocol encodings" (182-byte header and the exact RPC bytes).
 
-Price table: canonical JSON with sorted keys and no white space,
-`{"units":{"eth_blockNumber":1,"eth_chainId":1,"eth_getBalance":2},"version":1}`.
+Price table (version 2): canonical JSON with sorted keys and no white space,
+`{"units":{"eth_blockNumber":1,"eth_call":3,"eth_chainId":1,"eth_getBalance":2,"eth_getTransactionReceipt":2},"version":2}`.
 `price_table_hash = keccak256` of it
-(`0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f`).
+(`0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08`).
+`PriceTable::current()` (Rust) and `CURRENT_PRICE_TABLE` (TypeScript) are this table. Version 1
+(`PriceTable::initial()`, `INITIAL_PRICE_TABLE`) had only `eth_chainId` 1, `eth_blockNumber` 1, and
+`eth_getBalance` 2, with hash `0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f`.
+The gateway serves only version 2. A client gets the table from `GET /v1/prices`; the SDK has no
+method list of its own.
+
+| Method | Units | Params |
+|---|---:|---|
+| `eth_chainId` | 1 | none |
+| `eth_blockNumber` | 1 | none |
+| `eth_getBalance` | 2 | `[address, block]` |
+| `eth_call` | 3 | `[{to, from?, data or input?, value?, gas?, gasPrice?}, block]` |
+| `eth_getTransactionReceipt` | 2 | `[transaction hash]` |
 
 ### Open pipeline
 
@@ -609,11 +638,16 @@ price table hash (before the lock and before any state change); per-batch lock (
 with no charge (`X-Anon-Replayed: true`), or `response_expired` with the receipt after 60 s; a
 different digest is `sequence_conflict`; higher is `sequence_gap`. Then the deadline, the
 method allowlist (`eth_chainId` and `eth_blockNumber` with no params, `eth_getBalance` with
-`[address, block]`; duplicate JSON keys, batches, and notifications are rejected), remaining
+`[address, block]`, `eth_getTransactionReceipt` with `[0x and 64 hex digits]`, `eth_call` with
+`[call object, block]`: `to` is necessary; `from`; `data` or `input`, not both, at most 8 KiB;
+`value`, `gasPrice` (256 bits), and `gas` (64 bits) as canonical hex quantities; other members are
+rejected; a block is a tag or a canonical hex number of at most 64 bits; duplicate JSON keys,
+batches, and notifications are rejected), remaining
 units, and `units_total == session units_total + method units`. The gateway forwards the exact
 client bytes upstream. A JSON-RPC result or error object with HTTP 200 is charged; a transport
-failure, a non-200 status, a malformed response, or more than 1 MiB is `upstream_failed` and
-changes nothing. The debit, the receipt, and the response bytes commit in one transaction; a
+failure, a non-200 status, a malformed response, or more than
+`GATEWAY_UPSTREAM_RESPONSE_LIMIT_BYTES` (1 MiB; for example a large `eth_call` result, with or
+without `content-length`) is `upstream_failed` (502, retryable) and changes nothing. The debit, the receipt, and the response bytes commit in one transaction; a
 commit failure is `storage_unavailable` and the response is discarded.
 
 ### Database (`GATEWAY_DATABASE_PATH`, WAL, `synchronous = FULL`)
@@ -911,8 +945,14 @@ tests the path that the Nox run uses; step 13 opens batch 2 with the inline proo
 direct transport), so both paths run. It stops only the processes that it started. Logs and databases go to a temporary
 directory (printed). Result: `examples/e2e/results/integration-result.json`.
 
-Last run (Apple M4 Pro, Chromium 149, threaded prover with 8 threads, 25 s in total): 15 of 15 steps
-pass. Remaining 100 -> 99 -> 98 -> 96, next_seq 1, 2, 3; the replay returns the same body with
+Last run (2026-11-07, price table version 2, Apple M4 Pro, 15 s for the steps): 15 of 15 steps
+pass. Step 9: remaining 100 -> 99 -> 98 -> 96 -> 93 -> 91, next_seq 1 to 5; `eth_call` of
+`CreditSale.batchPriceWei()` returns `100000000000000`; `eth_getTransactionReceipt` of the purchase
+returns status `0x1`. Balance 91 through steps 10 and 11; 91 one-unit reads to 0, then
+`insufficient_units` with next_seq 96 (96 receipts in the admin view).
+
+Earlier run (price table version 1, Chromium 149, threaded prover with 8 threads, 25 s in total):
+15 of 15 steps pass. Remaining 100 -> 99 -> 98 -> 96, next_seq 1, 2, 3; the replay returns the same body with
 `X-Anon-Replayed: true` and no debit; same seq with another body: `sequence_conflict`; bad signature:
 401 `signature_invalid`; gap: 409 `sequence_gap`; balance stays 96; 96 one-unit reads to 0, then
 `insufficient_units` with next_seq 99; second batch opens on its own isolation key (remaining 99 after

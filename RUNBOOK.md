@@ -314,10 +314,10 @@ Console lines start with `[e2e hh:mm:ss]`. The dashboard updates within 1 s of e
 | 6. Membership path | The path is fetched on the `registry:<batch>` isolation key and checked locally. | Nothing (the path comes from the issuer). |
 | 7. Proof | Proof size (about 475 KB), proving time (about 0.2 s threaded, 0.5 s scalar on an M4 Pro). | Nothing. |
 | 8. Open batch 1 | `remaining 100, next_seq 0`. | Events `open_received` -> `open_verified` (verification time) -> `session_opened`. Health: sessions active 1. Demo comparison column (b) fills: the observed source IP of the Nox exit. |
-| 9. Three reads | Remaining 99, 98, 96; next_seq 1, 2, 3. | `rpc_received`/`rpc_completed` pairs with methods `eth_chainId`, `eth_blockNumber`, `eth_getBalance`, units 1, 1, 2. Spend table in the demo comparison. |
-| 10. Replay and conflict | Same body, `X-Anon-Replayed: true`, no debit; another body with the same seq: `sequence_conflict`. | `rpc_replayed` (no units), then `rpc_rejected sequence_conflict`. Remaining stays 96. |
-| 11. Bad signature and gap | `signature_invalid`, `sequence_gap`, remaining 96. | Two `rpc_rejected` events. Failure counters grow. |
-| 12. Exhaustion | 96 one-unit reads to 0, then `insufficient_units` with next_seq 99. | Many `rpc_completed` events; session state `exhausted`; receipt count "99 receipts (all)". |
+| 9. Five reads | Remaining 99, 98, 96, 93, 91; next_seq 1 to 5. `eth_call` returns the batch price of `CreditSale.batchPriceWei()`; `eth_getTransactionReceipt` returns the purchase receipt with status `0x1`. | `rpc_received`/`rpc_completed` pairs with methods `eth_chainId`, `eth_blockNumber`, `eth_getBalance`, `eth_call`, `eth_getTransactionReceipt`, units 1, 1, 2, 3, 2. Spend table in the demo comparison. |
+| 10. Replay and conflict | Same body, `X-Anon-Replayed: true`, no debit; another body with the same seq: `sequence_conflict`. | `rpc_replayed` (no units), then `rpc_rejected sequence_conflict`. Remaining stays 91. |
+| 11. Bad signature and gap | `signature_invalid`, `sequence_gap`, remaining 91. | Two `rpc_rejected` events. Failure counters grow. |
+| 12. Exhaustion | 91 one-unit reads to 0, then `insufficient_units` with next_seq 96. | Many `rpc_completed` events; session state `exhausted`; receipt count "96 receipts (all)". |
 | 13. Batch 2 | Opens on a new isolation key; one read leaves 99. | A second `session_opened` with a new batch ID. Nothing in the gateway joins the two batches. |
 | 14. Batch 3 | A modified proof gives `proof_invalid` and no session row; the valid open gives 100. | `open_rejected proof_invalid`, then `open_verified` and `session_opened`. |
 | 15. Admin check | Remaining 0, 99, 100 in the admin view; counters and observed addresses go into the result. | Select each batch: the timeline shows open_received -> open_verified -> session_opened -> rpc_*; the deadline shows as a UTC time. |
