@@ -91,7 +91,8 @@ export function App() {
   const changeTransport = (choice: TransportChoice): void => {
     const next = { ...settings, transport: choice };
     setSettings(next);
-    if (workbench !== null && passphrase !== "") {
+    // Reconnect when the store was unlocked once, also after a failed rebuild.
+    if (passphrase !== "") {
       setInclusion(null);
       setOpened(null);
       connect(next, passphrase);
