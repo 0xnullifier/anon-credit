@@ -953,7 +953,7 @@ the `finalized` tag. Tests: `cargo test -p anon-credit-gateway --test adapters i
 ### Tests
 
 ```sh
-pnpm --filter @anon-credit/sdk test             # 37: vectors, gate witness, open, chunked upload, spend, retries, expiry, journal, isolation, storage, backup
+pnpm --filter @anon-credit/sdk test             # 39: vectors, gate witness, open, chunked upload, spend, retries, expiry, journal, isolation, storage, backup
 pnpm --filter @anon-credit/anon-transport test  # 7: harness lifecycle with a fake worker, error codes, no fallback, PUT with a raw byte body, maxBodyBytes
 pnpm --filter @anon-credit/example-e2e test     # 6: Sepolia dry run with fakes, URL policy
 node examples/e2e/nox-probe.ts                  # live Nox probe (internet access)
