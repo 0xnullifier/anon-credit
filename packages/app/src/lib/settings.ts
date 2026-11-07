@@ -62,6 +62,13 @@ export function devPayer(): DevPayer | null {
   return { privateKey, rpcUrl };
 }
 
+// The HTTP RPC that a local key pair uses to read the chain and to broadcast. Null if the
+// build has none; then only an injected wallet can pay.
+export function localRpcUrl(): string | null {
+  const rpcUrl = text(env["VITE_DEV_RPC_URL"], "");
+  return rpcUrl === "" ? null : rpcUrl;
+}
+
 // A fixed public address for eth_getBalance that is not the payer.
 export const TEST_ADDRESS = text(env["VITE_TEST_ADDRESS"], "0x000000000000000000000000000000000000dead");
 

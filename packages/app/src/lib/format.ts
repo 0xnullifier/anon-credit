@@ -62,6 +62,18 @@ export function explorerTx(chainId: number, txHash: string): string | null {
   }
 }
 
+// Etherscan link of an address, or null for a chain without an explorer here.
+export function explorerAddress(chainId: number, address: string): string | null {
+  switch (chainId) {
+    case 11155111:
+      return `https://sepolia.etherscan.io/address/${address}`;
+    case 1:
+      return `https://etherscan.io/address/${address}`;
+    default:
+      return null;
+  }
+}
+
 export function chainName(chainId: number): string {
   switch (chainId) {
     case 11155111:

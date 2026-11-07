@@ -5,7 +5,16 @@
 import { createAnonTransport, directTransport, type Transport } from "@anon-credit/anon-transport";
 import { gatewayConfigResponseSchema, issuerConfigResponseSchema, type GatewayConfigResponse, type IssuerConfigResponse } from "@anon-credit/protocol";
 import { createBatchOpenProver, sha256Hex, type BatchOpenProver } from "@anon-credit/prover";
-import { CONFIG_ISOLATION_KEY, createClient, indexedDbStorage, type Client, type OpenProgress, type StorageAdapter } from "@anon-credit/sdk";
+import {
+  CONFIG_ISOLATION_KEY,
+  createClient,
+  indexedDbStorage,
+  openEncryptedStore,
+  type Client,
+  type EncryptedStore,
+  type OpenProgress,
+  type StorageAdapter,
+} from "@anon-credit/sdk";
 import type { z } from "zod";
 import { observeTransport, type ObservedTransport } from "./observe.ts";
 import { MANIFEST_PATH, type Settings } from "./settings.ts";
@@ -16,6 +25,8 @@ export interface Workbench {
   readonly transport: ObservedTransport;
   readonly prover: BatchOpenProver;
   readonly storage: StorageAdapter;
+  // The same encrypted store as the SDK, for the app records (local key pairs, prefix "app/").
+  readonly appStore: EncryptedStore;
   readonly gatewayConfig: GatewayConfigResponse;
   readonly issuerConfig: IssuerConfigResponse;
   // SHA-256 of the manifest bytes that this origin serves (0x hex).
@@ -97,12 +108,15 @@ export async function buildWorkbench(settings: Settings, passphrase: string, hoo
         pollMs: 2000,
         onOpenProgress: hooks.onOpenProgress,
       });
+      // The SDK unlocked the store; this second unlock is for the app records.
+      const appStore = await openEncryptedStore(storage, { passphrase });
       return {
         settings,
         client,
         transport,
         prover,
         storage,
+        appStore,
         gatewayConfig,
         issuerConfig,
         manifestSha256,
