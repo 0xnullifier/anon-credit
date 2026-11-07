@@ -235,10 +235,22 @@ Purchase tracking can use the payer connection. Fetch membership proofs through 
 | `GET /v1/config` | Gateway identity, circuit ID, upstream chain, and resource limits. |
 | `GET /v1/prices` | Versioned, content-addressed price table. |
 | `GET /v1/roots` | Roots the gateway currently accepts. |
-| `POST /v1/open` | Proof, public inputs, session key, price-table hash, and open signature. Returns session state. |
+| `PUT /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/{chunk_count}/{chunk_index}` | One raw chunk of a proof upload (body `application/octet-stream`, at most 40,000 bytes). Returns the received chunk count and completion. See "Chunked open upload". |
+| `POST /v1/open` | Proof (inline, or a reference to a complete chunked upload), public inputs, session key, price-table hash, and open signature. Returns session state. |
 | `POST /v1/rpc` | Batch ID, sequence, cumulative units, exact RPC bytes, and signature. Returns the raw JSON-RPC response. |
 | `POST /v1/session/status` | Signed batch ID and random nonce. Returns balance, next sequence, deadline, latest receipt metadata, and the echoed nonce. |
 | `GET /v1/demo/peer` | Demo-only direct probe on the same public ingress. Returns the observed source address; accepts no batch or purchase identifier. Disabled in the normal profile. |
+
+### Chunked open upload
+
+Nox refuses requests above about 48,000 bytes. An open request with an inline proof is about 640 KB. Thus a client sends the proof first in chunks and then sends `POST /v1/open` with `proof_upload: { proof_sha256, total_bytes, proof_encoding }` in place of `proof`. The open signature and the open pipeline do not change.
+
+- Encoding: the browser compresses the JSON proof with gzip (`json+gzip`, about 318 KB). The proof bytes are field elements and do not compress more; the binary `.np` form is only 6 % smaller. The gateway decompresses with the upload size limit.
+- Wire: the body of each chunk is the raw bytes (`application/octet-stream`, no JSON, no base64). The path has the metadata: batch ID, SHA-256 of the whole upload, total length, chunk count, and chunk index. The path has no secret; the batch ID and the digest are public to the gateway. The path does not depend on custom headers.
+- Size: at most 40,000 bytes for each chunk. `GET /v1/config` publishes it (`limits.open_upload_chunk_bytes`), and the client plans with it, not above the transport body limit. A 318 KB proof is 8 chunks.
+- Gateway: it keys an upload by `(batch_id, proof_sha256)`. Chunks can arrive in any order. A duplicate chunk with the same bytes has no effect; with different bytes it is `invalid_request`. At the last chunk it checks the length and the SHA-256. `POST /v1/open` takes the upload out of the store, on success and on each rejection. Limits: 4 MiB for each upload, 256 chunks, 10-minute TTL, 1,000 pending uploads, 512 MiB pending; a full store is `busy`.
+- Client: it sends 8 chunks at the same time on the batch isolation key with one attempt each, then the failed chunks one at a time with up to 3 attempts of the same bytes. Later uploads of the client then use one chunk at a time. The policy is configurable.
+- Measured through the live Nox network (2026-11-07): 8 chunks in flight passed in 9 of 9 runs (72 of 72 chunks, no retry) in 4.4 to 6.6 s for one proof. One chunk at a time took 19.7 s. The earlier format (24 KiB as base64 in JSON, 13 chunks, 4 in flight) took 19 to 38 s.
 
 Successful RPC responses include balance, next-sequence, and replay indicators in response headers. Anon-RPC must preserve access to those headers. The client has authenticated status recovery if headers or responses are lost.
 
