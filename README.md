@@ -152,11 +152,11 @@ the environment. The services print `set` or `not set` for secrets, never the va
 |---|---|---|
 | `DEPLOYMENT_CONFIG` | not set | Path of the deployment TOML file. |
 | `EPOCH_SECONDS` | `30` | Epoch length. Testnet 30, production 900. Must equal the deployment value if both are set. |
+| `BLOCK_TAG` | `finalized` | Block tag of the issuer sale indexer, the issuer root publisher, and the gateway root source: `finalized`, `safe`, or `latest`. Both services report it in `GET /v1/config`. The testnet demo profile and `run-services.sh` use `latest`. `latest` trades reorg safety for speed: testnet only. |
 | `ISSUER_BIND` | `0.0.0.0:8080` | Issuer API listen address. |
 | `ISSUER_DB_PATH` | `data/issuer.db` | Issuer SQLite database. |
 | `SEPOLIA_RPC_URL` | not set | Sepolia RPC for payment indexing and root publication. Secret if it has a key. |
 | `ISSUER_PRIVATE_KEY` | not set | Root publisher private key (`issuer_address`). Secret. |
-| `BLOCK_TAG` | `finalized` | Block tag of the issuer sale indexer, the issuer root publisher, and the gateway root source: `finalized`, `safe`, or `latest`. Both services report it in `GET /v1/config`. The testnet demo profile and `run-services.sh` use `latest`. `latest` trades reorg safety for speed: testnet only. |
 | `SALE_ADDRESS`, `ROOT_REGISTRY_ADDRESS` | deployment values | Optional. Must equal the deployment values if set. |
 | `ISSUER_START_BLOCK` | `0` | First block of the sale indexer: the `CreditSale` deployment block. |
 | `ISSUER_INDEX_POLL_SECONDS`, `ISSUER_PUBLISH_POLL_SECONDS` | `12`, `5` | Time between indexer and publisher passes. |
@@ -929,8 +929,12 @@ pnpm example:e2e                # the full run
 It refuses an `E2E_GATEWAY_URL` or `E2E_ISSUER_URL` that is not HTTPS, that is localhost, or that is or
 resolves to a private, loopback, link-local, or shared address (exit code 2 for settings). It stops
 before the purchase if a preflight check fails. It uses the same page and step code as the harness
-with the Nox transport, a real purchase from the test payer, finality progress lines, the random
-first-use delay, a two-hour default timeout, and a sanitized result
+with the Nox transport, a real purchase from the test payer, and a two-hour default timeout. After
+the preflight it prints the expected waits for the `block_tag` of `GET /v1/config`: with `latest`
+(the demo), no finality wait and no first-use delay, so a purchase opens after at most one epoch
+plus chain latency; with `finalized`, about 13 minutes for each finality wait and a random
+first-use delay of 0 to 3 epochs. The preflight checks that both services report the same tag. It
+writes a sanitized result
 (`examples/e2e/results/sepolia-result.json`, no keys, passphrase, token, or RPC URL). It exits nonzero on
 a failed step or on the timeout. It has not run: no deployment exists. Step 8 and the other opens
 send the proof in 8 raw chunks through Nox (about 5 to 7 s each, see the chunk probe).
