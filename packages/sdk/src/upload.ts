@@ -1,22 +1,26 @@
-// Chunked proof upload (PUT /v1/open/chunks).
+// Chunked proof upload (PUT /v1/open/chunks/{batch_id}/{proof_sha256}/{total_bytes}/
+// {chunk_count}/{chunk_index}).
 //
-// The Nox worker refuses request bodies above about 48,000 bytes, and an open request with an
+// The Nox worker refuses requests above about 48,000 bytes, and an open request with an
 // inline proof is about 640 KB. Thus the SDK:
 // 1. Encodes the JSON proof with gzip (CompressionStream), or sends the JSON as it is if the
 //    runtime has no CompressionStream.
-// 2. Splits the bytes into chunks of at most 24 KiB. Each chunk envelope is below 40,000 bytes.
-// 3. Sends the chunks on the isolation key of the batch: first 4 at the same time with one
+// 2. Splits the bytes into chunks of at most 40,000 bytes (the chunk size of GET /v1/config,
+//    and not more than transport.maxBodyBytes). The body of each PUT is the raw chunk bytes
+//    (application/octet-stream). The path has the chunk metadata. A 318 KB gzip proof gives
+//    8 chunks.
+// 3. Sends the chunks on the isolation key of the batch: first 8 at the same time with one
 //    attempt each, then the failed chunks one at a time with retries. A retry sends the same
 //    bytes. The gateway ignores a duplicate chunk with the same bytes.
 // 4. Sends POST /v1/open with proof_upload in place of proof. The signature does not change.
 
 import {
   OPEN_CHUNK_MAX_BYTES,
-  encodeBase64,
   encodeHex,
-  openChunkRequestSchema,
+  openChunkPathSchema,
   proofUploadSchema,
-  type OpenChunkRequest,
+  type GatewayLimits,
+  type OpenChunkPath,
   type OpenChunkResponse,
   type ProofEncoding,
   type ProofUpload,
@@ -38,16 +42,22 @@ export interface UploadPolicy {
   readonly delayMs: number;
 }
 
-export const DEFAULT_UPLOAD_POLICY: UploadPolicy = { parallel: 4, attempts: 3, delayMs: 500 };
+export const DEFAULT_UPLOAD_POLICY: UploadPolicy = { parallel: 8, attempts: 3, delayMs: 500 };
 
 export interface EncodedProof {
   readonly bytes: Uint8Array;
   readonly encoding: ProofEncoding;
 }
 
+// One chunk request: the path metadata and the raw body. Each chunk has its own buffer.
+export interface OpenChunk {
+  readonly path: OpenChunkPath;
+  readonly data: Uint8Array<ArrayBuffer>;
+}
+
 export interface UploadPlan {
   readonly reference: ProofUpload;
-  readonly chunks: readonly OpenChunkRequest[];
+  readonly chunks: readonly OpenChunk[];
 }
 
 export interface UploadStats {
@@ -76,7 +86,17 @@ export async function encodeProof(proof: Uint8Array): Promise<EncodedProof> {
   return { bytes, encoding: "json+gzip" };
 }
 
-// Split encoded proof bytes into chunk envelopes for one batch.
+// The chunk size for one gateway and transport: the gateway chunk size of GET /v1/config,
+// not above its body limit, the protocol maximum, or the transport body limit.
+export function uploadChunkBytes(limits: Pick<GatewayLimits, "open_upload_chunk_bytes" | "open_upload_chunk_body_bytes">, maxBodyBytes: number): number {
+  const size = Math.min(OPEN_CHUNK_MAX_BYTES, limits.open_upload_chunk_bytes, limits.open_upload_chunk_body_bytes, maxBodyBytes);
+  if (!Number.isInteger(size) || size < 1) {
+    throw new SdkError("invalid_response", `the gateway and the transport allow no chunk size (${size} bytes)`);
+  }
+  return size;
+}
+
+// Split encoded proof bytes into chunks for one batch.
 export function planUpload(batchId: string, encoded: EncodedProof, chunkBytes: number = OPEN_CHUNK_MAX_BYTES): UploadPlan {
   if (!Number.isInteger(chunkBytes) || chunkBytes < 1 || chunkBytes > OPEN_CHUNK_MAX_BYTES) {
     throw new SdkError("invalid_response", `chunk size must be 1 to ${OPEN_CHUNK_MAX_BYTES} bytes`);
@@ -88,18 +108,20 @@ export function planUpload(batchId: string, encoded: EncodedProof, chunkBytes: n
     proof_encoding: encoded.encoding,
   });
   const count = Math.ceil(total / chunkBytes);
-  const chunks: OpenChunkRequest[] = [];
+  const chunks: OpenChunk[] = [];
   for (let index = 0; index < count; index += 1) {
-    chunks.push(
-      openChunkRequestSchema.parse({
+    chunks.push({
+      path: openChunkPathSchema.parse({
         batch_id: batchId,
         proof_sha256: reference.proof_sha256,
         total_bytes: total,
-        chunk_index: index,
         chunk_count: count,
-        data: encodeBase64(encoded.bytes.subarray(index * chunkBytes, Math.min(total, (index + 1) * chunkBytes))),
+        chunk_index: index,
       }),
-    );
+      // slice, not subarray: a copy of the chunk bytes only, so that a transport that
+      // clones the body does not clone the full upload.
+      data: encoded.bytes.slice(index * chunkBytes, Math.min(total, (index + 1) * chunkBytes)),
+    });
   }
   return { reference, chunks };
 }
@@ -121,7 +143,7 @@ function asError(error: Thrown): Error {
 }
 
 export interface UploadDeps {
-  readonly send: (chunk: OpenChunkRequest) => Promise<OpenChunkResponse>;
+  readonly send: (chunk: OpenChunk) => Promise<OpenChunkResponse>;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
 }
