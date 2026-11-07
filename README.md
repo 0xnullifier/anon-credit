@@ -156,6 +156,7 @@ the environment. The services print `set` or `not set` for secrets, never the va
 | `ISSUER_DB_PATH` | `data/issuer.db` | Issuer SQLite database. |
 | `SEPOLIA_RPC_URL` | not set | Sepolia RPC for payment indexing and root publication. Secret if it has a key. |
 | `ISSUER_PRIVATE_KEY` | not set | Root publisher private key (`issuer_address`). Secret. |
+| `BLOCK_TAG` | `finalized` | Block tag of the issuer sale indexer, the issuer root publisher, and the gateway root source: `finalized`, `safe`, or `latest`. Both services report it in `GET /v1/config`. The testnet demo profile and `run-services.sh` use `latest`. `latest` trades reorg safety for speed: testnet only. |
 | `SALE_ADDRESS`, `ROOT_REGISTRY_ADDRESS` | deployment values | Optional. Must equal the deployment values if set. |
 | `ISSUER_START_BLOCK` | `0` | First block of the sale indexer: the `CreditSale` deployment block. |
 | `ISSUER_INDEX_POLL_SECONDS`, `ISSUER_PUBLISH_POLL_SECONDS` | `12`, `5` | Time between indexer and publisher passes. |
@@ -165,7 +166,7 @@ the environment. The services print `set` or `not set` for secrets, never the va
 | `GATEWAY_ADMIN_BIND` | `127.0.0.1:8082` | Gateway admin API listen address. Keep it private. |
 | `GATEWAY_DATABASE_PATH` | `data/gateway.db` | Gateway SQLite database. |
 | `GATEWAY_UPSTREAM_RPC_URL` | not set | Upstream Sepolia RPC for paid reads. Secret if it has a key. |
-| `GATEWAY_ROOT_RPC_URL` | `SEPOLIA_RPC_URL` | RPC to read finalized roots from `RootRegistry`. |
+| `GATEWAY_ROOT_RPC_URL` | `SEPOLIA_RPC_URL` | RPC to read roots from `RootRegistry` at `BLOCK_TAG`. |
 | `GATEWAY_ROOT_SOURCE` | `contract` | `contract` or `issuer-http` (local runs only; see "Gateway root source"). |
 | `GATEWAY_ROOT_ISSUER_URL` | not set | Issuer base URL for `issuer-http`. |
 | `GATEWAY_ADMIN_TOKEN` | not set | Admin API bearer token. Secret. |
@@ -419,10 +420,11 @@ only. The issuer does not record client addresses.
 ### How issuance timing works
 
 1. The client calls `CreditSale.buy(commitments)` with exactly `batch_price_wei * n`.
-2. The indexer reads `Purchased` logs only up to the RPC `finalized` block (about 13 minutes on
-   Sepolia). For each log, it checks the contract address, the event, the amounts, the receipt
-   status, and the canonical block hash. If the RPC gives no finalized block, issuance waits
-   and reports `finality_unavailable`. A fixed block depth is never used.
+2. The indexer reads `Purchased` logs only up to the RPC block of `BLOCK_TAG` (`finalized` by
+   default: about 13 minutes on Sepolia; `latest` in the testnet demo: the purchase block). For
+   each log, it checks the contract address, the event, the amounts, the receipt status, and the
+   canonical block hash. If the RPC gives no block for the tag, issuance waits and reports
+   `finality_unavailable`. A fixed block depth is never used.
 3. In one SQLite transaction, the issuer records the payment, keyed by
    `(chain_id, tx_hash, log_index)`, and appends one leaf for each commitment:
    `leaf = H(DOM_LEAF, c, K, expiry)`, `expiry = insertion_epoch + 35,040`. The issuer sets the
@@ -435,12 +437,17 @@ only. The issuer does not record client addresses.
    them. It waits until the latest block time passes the end of `e`. One transaction is in
    flight at a time. If it falls behind, it sends only the newest pending epoch and marks the
    older ones `skipped`. After a restart, it sends the stored bytes again and reconciles the
-   receipt: `included`, then `finalized` when the block is final and canonical. A dropped or
-   reverted transaction becomes `failed`; the next epoch replaces it.
-6. The gateway reads roots from `RootRegistry` after root finality (about 13 more minutes).
+   receipt: `included`, then `finalized` when the block is at or below the block of `BLOCK_TAG`
+   and canonical. A dropped or reverted transaction becomes `failed`; the next epoch replaces it.
+6. The gateway reads roots from `RootRegistry` at `BLOCK_TAG`: with `finalized`, after root
+   finality (about 13 more minutes); with `latest`, when `postRoot` is mined.
 
-Thus the first open after a purchase waits for payment finality, one epoch boundary, root
-publication, and root finality. After that, a new root comes every 30 s.
+Thus, with `finalized`, the first open after a purchase waits for payment finality, one epoch
+boundary, root publication, and root finality (about 27 minutes), plus the random first-use
+delay. With the testnet demo profile (`BLOCK_TAG=latest`, no first-use delay), it waits at most
+one epoch (30 s) plus chain latency. `latest` trades reorg safety for speed: a reorganization can
+remove a purchase or a root that the services already used. Use it only on a testnet. After the
+first open, a new root comes every 30 s.
 
 Gas: the issuer publishes every epoch, also with no new leaves, so that the gateway always has a
 fresh root. At 30 s epochs this is 2,880 `postRoot` transactions each day (96 each day at 900 s).
@@ -480,7 +487,8 @@ EVM `cancun`, no vendored library.
 The gateway (`crates/gateway`, binary `gateway`) opens anonymous sessions from batch-open
 proofs and sells paid JSON-RPC reads. It uses stable Rust. The ProveKit verifier runs in the
 separate loopback sidecar (see "Verifier sidecar"). The gateway reads roots from
-`RootRegistry` on Sepolia at the `finalized` block tag. It does not use the issuer API.
+`RootRegistry` on Sepolia at the block tag of `BLOCK_TAG` (default `finalized`). It does not use
+the issuer API.
 
 ### Run
 
@@ -513,7 +521,7 @@ The shared and the older gateway variables are in the Configuration table. Phase
 | `GATEWAY_UPSTREAM_CHAIN_ID` | deployment `payment_chain_id` | Expected upstream `eth_chainId`. |
 | `GATEWAY_TRUSTED_PROXY_ADDRS` | not set | Comma-separated IP addresses of trusted reverse proxies. `GATEWAY_TRUSTED_PROXY` (one address) is also read. |
 | `GATEWAY_FORWARDED_HEADER` | `x-forwarded-for` | Forwarding header that only a trusted proxy can set. |
-| `GATEWAY_ROOT_POLL_SECONDS` | `10` | Time between root refreshes. |
+| `GATEWAY_ROOT_POLL_SECONDS` | `10` | Time between root refreshes. The demo example uses `3`. |
 | `GATEWAY_OPEN_BODY_LIMIT_BYTES` | `16777216` | Largest `POST /v1/open` body. |
 | `GATEWAY_SPEND_BODY_LIMIT_BYTES` | `65536` | Largest `POST /v1/rpc` and `POST /v1/session/status` body. |
 | `GATEWAY_UPSTREAM_RESPONSE_LIMIT_BYTES` | `1048576` | Largest upstream response. |
@@ -795,9 +803,11 @@ The runner receives only commitments. Batch secrets and session keys never leave
 - Deployment check at `createClient`: the issuer `deployment_id` is keccak256 of its deployment; the
   gateway and the issuer agree on `deployment_id`, `gateway_id`, `circuit_id`, verifier hash, and
   epoch; `prover_manifest_hash` is the pinned manifest digest; `/v1/prices` hashes to the config value.
-- Open: wait until `eligible_epoch + delay` (delay 0 to 3 epochs, chosen once per batch; injectable).
-  Select the newest root that the gateway accepts, that the issuer reports as `finalized` with the
-  same root and leaf count, with `source_epoch >= eligible_epoch` (insertion epoch + 1). Fetch the
+- Open: wait until `eligible_epoch + delay` (delay 0 to `maxFirstUseDelayEpochs`, default 3; 0 in
+  the testnet demo profile; chosen once per batch; injectable). Select the newest root that the
+  gateway accepts, that the issuer reports as `finalized` with the same root and leaf count, with
+  `source_epoch >= insertion_epoch` and a leaf count above the leaf index. The root of the insertion
+  epoch is published in the eligible epoch (insertion epoch + 1). Fetch the
   path on the isolation key `registry:<batch_id>` and check it locally. Build the witness, check that
   the witness public inputs equal `batchOpenPublicInputs` (the order of
   `fixtures/protocol/batch-open-public-inputs.json`), validate with `batchOpenInputsSchema`, prove,
@@ -885,8 +895,8 @@ Needs `~/.foundry/bin` (anvil, forge), cargo, the ProveKit nightly toolchain (si
 Chromium (`CHROMIUM_PATH` or the Playwright cache). If `artifacts/provekit-wasm/` is missing, the
 harness runs `tooling/provekit/build-wasm.sh`. `SKIP_OPTIONAL=1` stops `check.sh` before this step.
 
-What it does: anvil with 1 s blocks and `--slots-in-an-epoch 1` (anvil gives `finalized` = latest - 2,
-so the issuer and the gateway use the real `finalized` tag), `forge script Deploy.s.sol` (anvil test
+What it does: anvil with 1 s blocks (the issuer and the gateway get `BLOCK_TAG=latest`, and the page
+gets `maxFirstUseDelayEpochs: 0`: the testnet demo profile), `forge script Deploy.s.sol` (anvil test
 mnemonic keys: deployer 0, issuer 1, payer 2), a deployment TOML with `epoch_seconds = 5` (the issuer
 gets `EPOCH_SECONDS=5`), the verifier sidecar, the issuer, the gateway (`GATEWAY_ROOT_SOURCE=contract`
 against anvil, `DEMO_IP_LOGGING=true`), and the Vite page with COOP/COEP. Then the step list of
@@ -945,10 +955,11 @@ deployment pins.
 
 ### Gateway root source
 
-`GATEWAY_ROOT_SOURCE=contract` (default) reads `RootRegistry` at the `finalized` tag. `issuer-http`
-reads the issuer `GET /v1/roots` (`GATEWAY_ROOT_ISSUER_URL`) and accepts only `finalized` records. It
-trusts the issuer and exists for local runs; the harness does not need it, because anvil supports
-the `finalized` tag. Tests: `cargo test -p anon-credit-gateway --test adapters issuer_http`.
+`GATEWAY_ROOT_SOURCE=contract` (default) reads `RootRegistry` at the `BLOCK_TAG` tag. `issuer-http`
+reads the issuer `GET /v1/roots` (`GATEWAY_ROOT_ISSUER_URL`) and accepts only `finalized` records
+(with `BLOCK_TAG=latest`, also `included` records). It trusts the issuer and exists for local runs;
+the harness does not need it, because anvil supports every block tag. Tests:
+`cargo test -p anon-credit-gateway --test adapters issuer_http`.
 
 ### Tests
 
