@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="anon-credit mark">
+  <!-- The mark alone, for favicons and avatars. Nine credits, one lit. -->
+  <rect width="128" height="128" fill="#0B0A09"/>
+  <g transform="translate(16 16)">
+    <rect x="0" y="0" width="24" height="24" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="36" y="0" width="24" height="24" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="72" y="0" width="24" height="24" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="0" y="36" width="24" height="24" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="36" y="36" width="24" height="24" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="72" y="36" width="24" height="24" fill="#E2B03A"/>
+    <rect x="0" y="72" width="24" height="24" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="36" y="72" width="24" height="24" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="72" y="72" width="24" height="24" fill="#E2B03A" fill-opacity="0.32"/>
+  </g>
+</svg>

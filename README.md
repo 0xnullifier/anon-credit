@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" alt="anon-credit" width="600"></p>
+
 # anon-credit
 
 An RPC gateway that takes no API key, no login, and no IP address.
@@ -7,6 +9,8 @@ A customer prepays for a batch of 100 requests on a Sepolia contract. The client
 Built at ETHGlobal Mumbai, 2026.
 
 ## How it works
+
+![architecture](assets/architecture.png)
 
 ```
  customer                      issuer                      gateway

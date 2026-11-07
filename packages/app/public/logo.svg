@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="160" viewBox="0 0 640 160" role="img" aria-label="anon-credit">
+  <!-- Mark: a batch of nine credits. One is lit. The proof says "one of these is mine" and never which. -->
+  <g transform="translate(24 24)">
+    <rect x="0" y="0" width="28" height="28" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="42" y="0" width="28" height="28" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="84" y="0" width="28" height="28" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="0" y="42" width="28" height="28" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="42" y="42" width="28" height="28" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="84" y="42" width="28" height="28" fill="#E2B03A"/>
+    <rect x="0" y="84" width="28" height="28" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="42" y="84" width="28" height="28" fill="#E2B03A" fill-opacity="0.32"/>
+    <rect x="84" y="84" width="28" height="28" fill="#E2B03A" fill-opacity="0.32"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="176" y="98" font-family="JetBrains Mono, SF Mono, Menlo, monospace" font-size="64" font-weight="600" letter-spacing="-0.02em" fill="#EBE4D6">anon<tspan fill="#8F8778">-</tspan>credit</text>
+</svg>
