@@ -20,6 +20,7 @@ import {
   type InlineOpenRequest,
   type Issuance,
   type OpenResponse,
+  type GatewayLimits,
   type PriceTable,
   type StatusResponse,
 } from "@anon-credit/protocol";
@@ -53,7 +54,7 @@ import {
   type DeploymentRecord,
 } from "./state.ts";
 import { openEncryptedStore, type EncryptedStore, type StorageAdapter } from "./storage.ts";
-import { DEFAULT_UPLOAD_POLICY, type OpenUploadMode, type UploadPolicy, type UploadStats } from "./upload.ts";
+import { DEFAULT_UPLOAD_POLICY, uploadChunkBytes, type OpenUploadMode, type UploadPolicy, type UploadStats } from "./upload.ts";
 
 export interface ClientConfig {
   // Gateway and issuer base URLs (HTTPS for the testnet run).
@@ -87,7 +88,7 @@ export interface ClientConfig {
   // When the proof goes in chunks (PUT /v1/open/chunks). Default: "auto" (always through Nox,
   // and for a request above transport.maxBodyBytes).
   readonly openUpload?: OpenUploadMode;
-  // Chunk concurrency and retries. Default: 4 at the same time, 3 attempts, 500 ms apart.
+  // Chunk concurrency and retries. Default: 8 at the same time, 3 attempts, 500 ms apart.
   readonly uploadPolicy?: Partial<UploadPolicy>;
 }
 
@@ -160,7 +161,12 @@ async function checkDeployment(
   config: ClientConfig,
   gateway: GatewayClient,
   registry: RegistryClient,
-): Promise<{ readonly deployment: DeploymentRecord; readonly priceTable: PriceTable; readonly priceTableHash: string }> {
+): Promise<{
+  readonly deployment: DeploymentRecord;
+  readonly priceTable: PriceTable;
+  readonly priceTableHash: string;
+  readonly limits: GatewayLimits;
+}> {
   const [gatewayConfig, prices, issuerConfig] = [await gateway.config(), await gateway.prices(), await registry.config()];
   const issuerDeployment = issuerConfig.deployment;
   const recomputed = encodeHex(deploymentId(deploymentFromIssuerConfig(issuerConfig)));
@@ -193,6 +199,7 @@ async function checkDeployment(
     },
     priceTable: prices.price_table,
     priceTableHash: prices.price_table_hash,
+    limits: gatewayConfig.limits,
   };
 }
 
@@ -264,6 +271,7 @@ export async function createClient(config: ClientConfig): Promise<Client> {
     transport: config.transport,
     openUpload: config.openUpload ?? "auto",
     uploadPolicy: { policy: { ...DEFAULT_UPLOAD_POLICY, ...config.uploadPolicy } },
+    chunkBytes: uploadChunkBytes(checked.limits, config.transport.maxBodyBytes),
     ...(config.onOpenProgress === undefined ? {} : { onProgress: config.onOpenProgress }),
   };
   const sessions = new Map<string, Session>();

@@ -5,6 +5,7 @@
 import { commitment, fieldFromHex, fieldToHex, peakHeightOf, peakHeights } from "@anon-credit/crypto";
 import {
   INITIAL_PRICE_TABLE,
+  OPEN_CHUNK_MAX_BYTES,
   decodeFixedHex,
   encodeBase64,
   encodeHex,
@@ -210,6 +211,7 @@ describe("open path against the gate witness and the public-input order contract
       transport: { kind: "direct", maxBodyBytes: Number.POSITIVE_INFINITY },
       openUpload: "auto",
       uploadPolicy: { policy: DEFAULT_UPLOAD_POLICY },
+      chunkBytes: OPEN_CHUNK_MAX_BYTES,
     };
     const record: BatchRecord = {
       order: 0,

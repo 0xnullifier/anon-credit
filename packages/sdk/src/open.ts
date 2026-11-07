@@ -69,6 +69,9 @@ export interface OpenContext {
   // Chunk concurrency and retries. After a sequential fallback, later uploads of this client
   // use one chunk at a time (`parallel` becomes 1).
   readonly uploadPolicy: { policy: UploadPolicy };
+  // Raw bytes of one chunk: the gateway chunk size of GET /v1/config, not above
+  // transport.maxBodyBytes (uploadChunkBytes).
+  readonly chunkBytes: number;
   readonly onProgress?: (progress: OpenProgress) => void;
 }
 
@@ -242,7 +245,7 @@ export function useChunkedUpload(mode: OpenUploadMode, transport: Pick<Transport
 // with proof_upload in place of proof, and the measurements.
 async function uploadProof(context: OpenContext, batchId: string, request: InlineOpenRequest): Promise<{ readonly wire: OpenRequest; readonly stats: UploadStats }> {
   const proof = decodeBase64(request.proof);
-  const plan = planUpload(batchId, await encodeProof(proof));
+  const plan = planUpload(batchId, await encodeProof(proof), context.chunkBytes);
   const { proof: _inline, ...fields } = request;
   const wire = uploadOpenRequestSchema.parse({ ...fields, proof_upload: plan.reference });
   const holder = context.uploadPolicy;
