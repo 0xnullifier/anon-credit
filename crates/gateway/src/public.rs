@@ -33,6 +33,7 @@ pub async fn config(State(gateway): State<SharedGateway>) -> Json<GatewayConfigR
         price_table_hash: config.price_table_hash,
         limits: config.limits.to_api(),
         demo_peer_enabled: gateway.peer.captures(),
+        block_tag: config.block_tag,
     })
 }
 

@@ -243,6 +243,7 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
             open_upload_max_pending_bytes: 536_870_912,
           },
           demo_peer_enabled: false,
+          block_tag: "finalized",
         });
       case "GET /v1/prices":
         return json(200, { price_table_hash: PRICE_HASH, price_table: INITIAL_PRICE_TABLE });

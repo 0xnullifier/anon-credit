@@ -20,6 +20,7 @@ use anon_credit_protocol::api::{
     GatewayLimits, OPEN_CHUNK_BODY_LIMIT_BYTES, OPEN_CHUNK_MAX_BYTES, ReceiptMetadata,
     SPEND_RESPONSE_HEADERS, SessionState, SessionStatus,
 };
+use anon_credit_protocol::settings::BlockTag;
 use anon_credit_protocol::{Bytes32, DecimalU64, DeploymentConfig, ErrorCode, PriceTable};
 use axum::Router;
 use axum::body::Bytes;
@@ -116,6 +117,8 @@ pub struct GatewayConfig {
     pub admin_token: String,
     /// Allowed CORS origins.
     pub cors_origins: Vec<HeaderValue>,
+    /// Block tag of the root source (`BLOCK_TAG`). `new` sets `finalized`.
+    pub block_tag: BlockTag,
 }
 
 impl GatewayConfig {
@@ -137,6 +140,7 @@ impl GatewayConfig {
             upstream_chain_id,
             admin_token,
             cors_origins,
+            block_tag: BlockTag::Finalized,
         }
     }
 

@@ -267,7 +267,8 @@
         "open_upload_max_pending": 1000,
         "open_upload_max_pending_bytes": 536870912
       },
-      "demo_peer_enabled": false
+      "demo_peer_enabled": false,
+      "block_tag": "finalized"
     },
     "prices_response": {
       "price_table_hash": "0xda98f5f3639aec038cc4eafa8881883249966a89123bd2fb42111d30b123f72f",

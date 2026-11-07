@@ -13,6 +13,7 @@
 import { z } from "zod";
 import { decodeFixedHex, MAX_U16, MAX_U32 } from "./bytes.ts";
 import { errorCodeSchema } from "./errors.ts";
+import { blockTagSchema } from "./issuer-api.ts";
 import type { OpenMessage } from "./open.ts";
 import { priceTableSchema } from "./price.ts";
 import type { StatusMessage } from "./status.ts";
@@ -266,6 +267,8 @@ export const gatewayConfigResponseSchema = z.strictObject({
   price_table_hash: hex32TextSchema,
   limits: gatewayLimitsSchema,
   demo_peer_enabled: z.boolean(),
+  // Block tag of the root source (BLOCK_TAG). "latest" is for a testnet only.
+  block_tag: blockTagSchema,
 });
 export type GatewayConfigResponse = z.output<typeof gatewayConfigResponseSchema>;
 

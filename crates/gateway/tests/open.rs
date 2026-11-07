@@ -368,6 +368,10 @@ async fn config_prices_and_roots_are_published() {
     assert_eq!(config.limits.open_body_bytes, 16 * 1024 * 1024);
     assert_eq!(config.root_window_epochs, 96);
     assert!(!config.demo_peer_enabled);
+    assert_eq!(
+        config.block_tag,
+        anon_credit_protocol::settings::BlockTag::Finalized
+    );
     let prices: PricesResponse = h.get("/v1/prices").await.json();
     assert_eq!(prices.price_table, PriceTable::initial());
     assert_eq!(prices.price_table_hash, prices.price_table.hash());

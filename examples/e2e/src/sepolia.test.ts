@@ -77,6 +77,7 @@ function fakeFetch(seen: string[]): typeof fetch {
             open_upload_max_pending_bytes: 536_870_912,
           },
           demo_peer_enabled: true,
+          block_tag: "latest",
         });
       case "https://gateway.example.org/v1/prices":
         return json({ price_table_hash: PRICE_HASH, price_table: INITIAL_PRICE_TABLE });

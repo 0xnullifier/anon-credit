@@ -617,6 +617,9 @@ pub struct GatewayConfigResponse {
     pub limits: GatewayLimits,
     /// `true` if `GET /v1/demo/peer` is available.
     pub demo_peer_enabled: bool,
+    /// Block tag of the root source (`BLOCK_TAG`). Production: `finalized`. `latest` trades
+    /// reorg safety for speed: testnet only.
+    pub block_tag: crate::settings::BlockTag,
 }
 
 /// `GET /v1/prices` response body.

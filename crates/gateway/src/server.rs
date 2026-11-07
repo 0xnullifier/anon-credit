@@ -126,7 +126,7 @@ pub async fn run(settings: GatewaySettings) -> anyhow::Result<()> {
         .await
         .context("cannot read the root cache")?;
     let roots = RootTracker::new(source, cached);
-    let config = GatewayConfig::new(
+    let mut config = GatewayConfig::new(
         deployment,
         PriceTable::initial(),
         limits,
@@ -134,6 +134,7 @@ pub async fn run(settings: GatewaySettings) -> anyhow::Result<()> {
         admin_token,
         cors_origins,
     );
+    config.block_tag = settings.common.block_tag;
     let gateway = Gateway::new(GatewayParts {
         config,
         store,
