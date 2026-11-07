@@ -4,7 +4,7 @@ This is the operator sequence for the Sepolia demo (implementation.md sections 1
 phase 6). Do the steps in order. Each step says what to do, what you see, and how long it takes.
 
 Governing documents: [implementation.md](implementation.md), [MVP.md](MVP.md). Background on each
-part: [README.md](README.md).
+part: [REFERENCE.md](REFERENCE.md).
 
 Contents:
 
@@ -384,7 +384,7 @@ past step 5 (or done; then show the events of the run).
 | Offchain payment (card, UPI) and remainder credit | Exact onchain `CreditSale.buy` payments of whole batches. | PRD.md R3 and R8, Architecture.md 4.2, MVP.md section 8, FUTURE.md section 1 |
 | Demo dApp with three modes and the public log viewer | The dashboard (private, with the admin token). | MVP.md sections 2 and 3 |
 | Onchain registry, many gateways, settlement receipts | One issuer and one gateway (trusted for the beta). | FUTURE.md sections 3 to 6 |
-| Measurement phase (load tests, benchmarks) | Measured proving and verification numbers in README.md. | implementation.md section 16, phase 7 |
+| Measurement phase (load tests, benchmarks) | Measured proving and verification numbers in REFERENCE.md. | implementation.md section 16, phase 7 |
 
 ## 12. Troubleshooting and stop
 

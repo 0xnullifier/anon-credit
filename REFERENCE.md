@@ -1,4 +1,6 @@
-# anon-credit
+# anon-credit reference
+
+Full technical reference of every component. The project overview is in [README.md](README.md).
 
 Anonymous prepaid credit for JSON-RPC. A client buys credit on Sepolia, proves ownership of
 one batch with a local ProveKit proof, opens an anonymous session at the gateway, and makes
@@ -8,6 +10,9 @@ Governing document: [implementation.md](implementation.md). Operator sequence fo
 [RUNBOOK.md](RUNBOOK.md).
 Background: [PRD.md](PRD.md), [Architecture.md](Architecture.md), [PROVER.md](PROVER.md).
 Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not delete it.
+
+Measured results: [native and gateway measurements](docs/measurements.md).
+Deferred privacy work: [privacy limitations](LIMITAIONS.md).
 
 ## Status
 
@@ -20,7 +25,7 @@ Reference transport demo: [anon-rpc-demo/](anon-rpc-demo/README.md). Do not dele
 | 4. SDK and testnet example | Browser state, request journal, prover adapter, Nox transport, script | Done in code and tests; the local integration harness passes 15 of 15 steps (anvil, direct transport). Nox refuses request bodies above about 48 KB, so the open sends the proof first in raw 40,000-byte chunks, 8 at the same time (phase 6A, "Chunked open upload"); the 8 chunks of a real proof pass through the live Nox network in 4 to 7 s. The Sepolia run through Nox is open: it needs the deployment and public HTTPS services |
 | 5. Dashboard | Admin snapshots, event stream, session views, demo IP attribution | Done in code and tests against the mock admin server and the shared schemas; a live run needs a running gateway |
 | 6. Complete demo | Script and dashboard on the same paid flow through Nox | In code and tests: admin snapshot gaps closed, dashboard demo comparison and session timeline, deployment helper and service launcher (tested on anvil), runbook ([RUNBOOK.md](RUNBOOK.md)). The live Sepolia run through Nox is open: it needs the user's deployment and public HTTPS services |
-| 7. Measurement | Proving, resource, and gateway benchmarks | Not started |
+| 7. Measurement | Proving, resource, and gateway benchmarks | Local native proof, real-verifier gateway open, durable spend, replay, memory, and concurrent spend measurements recorded in [docs/measurements.md](docs/measurements.md). One-thread verification misses 20 ms; 32-client spend p95 exceeds 5 ms. Fresh browser and live Nox measurements remain open. |
 
 Phase 0 contents:
 
