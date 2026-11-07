@@ -1118,6 +1118,18 @@ is not in this build.
 
 Git ignores the filled `config/testnet-demo.env` and the written `config/deployment.testnet.toml`.
 
+## Customer app (`packages/app`)
+
+The customer web app: one page with a connect panel and six steps (buy, wait for inclusion,
+open, spend, backup and restore, what the gateway sees). Every state on the page comes from a
+real request or event. The app uses the public SDK, prover, and transport APIs and does not
+change them. Its full description is in [packages/app/README.md](packages/app/README.md): the
+encrypted store and the `?store=` query, the wallet connector (EIP-6963, local key pairs, dev
+key), the inclusion tracker and its requests, the chunked open upload and the ten public inputs,
+the spend signing and replay rules, the backup format, the `VITE_*` variables, the local stack
+(`pnpm app:dev`), troubleshooting, and the SDK gaps it works around
+([packages/app/TODO-sdk.md](packages/app/TODO-sdk.md)).
+
 ## Pinned versions
 
 Rust (`Cargo.lock` pins the full set): tokio 1.54.1, axum 0.8.9, serde 1.0.229,
