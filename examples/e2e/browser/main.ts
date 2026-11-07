@@ -9,7 +9,7 @@
 // prefix "[e2e]"; they never have secrets.
 
 import { createAnonTransport, directTransport, type Transport } from "@anon-credit/anon-transport";
-import { decodeBase64, encodeBase64, type InlineOpenRequest, type SpendRequest } from "@anon-credit/protocol";
+import { OPEN_CHUNK_MAX_BYTES, decodeBase64, encodeBase64, openChunkPath, type InlineOpenRequest, type SpendRequest } from "@anon-credit/protocol";
 import { createBatchOpenProver, type BatchOpenProver } from "@anon-credit/prover";
 import {
   SdkError,
@@ -18,6 +18,7 @@ import {
   indexedDbStorage,
   planUpload,
   type Client,
+  type OpenChunk,
   type OpenUploadMode,
   type PreparedOpen,
   type SelectedRoot,
@@ -178,23 +179,30 @@ async function submit(page: PageState, batchId: string, request: InlineOpenReque
   };
 }
 
-// Send each chunk envelope once with `parallel` requests in flight, then the failed ones one
-// at a time with up to 3 attempts.
-async function chunkRun(transport: Transport, url: string, method: "PUT" | "POST", isolationKey: string, envelopes: readonly string[], parallel: number): Promise<ChunkRun> {
+// Send each raw chunk once with `parallel` requests in flight, then the failed ones one at a
+// time with up to 3 attempts. The URL is `base` + the chunk path.
+async function chunkRun(transport: Transport, base: string, method: "PUT" | "POST", isolationKey: string, chunks: readonly OpenChunk[], parallel: number): Promise<ChunkRun> {
   const sends: ChunkSend[] = [];
   const sendOne = async (index: number, phase: ChunkSend["phase"], attempt: number): Promise<boolean> => {
-    const body = envelopes[index] ?? "";
-    const data = z.object({ data: z.string() }).parse(JSON.parse(body)).data;
+    const chunk = chunks[index];
+    if (chunk === undefined) throw new Error(`chunk ${index} does not exist`);
+    // httpbin.org echoes standard base64, httpbingo.org echoes base64url. Accept both.
+    const standard = encodeBase64(chunk.data);
+    const urlSafe = standard.replaceAll("+", "-").replaceAll("/", "_");
     const sent = performance.now();
     try {
-      const response = await transport.fetch(url, { method, headers: { "content-type": "application/json" }, body }, { isolationKey });
+      const response = await transport.fetch(
+        `${base}${openChunkPath(chunk.path)}`,
+        { method, headers: { "content-type": "application/octet-stream" }, body: chunk.data },
+        { isolationKey },
+      );
       const text = await response.text();
       const ok = response.ok;
-      sends.push({ index, phase, attempt, ok, status: response.status, ms: performance.now() - sent, bodyBytes: body.length, echoed: text.includes(data), error: null });
+      sends.push({ index, phase, attempt, ok, status: response.status, ms: performance.now() - sent, bodyBytes: chunk.data.byteLength, echoed: text.includes(standard) || text.includes(urlSafe), error: null });
       return ok;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      sends.push({ index, phase, attempt, ok: false, status: null, ms: performance.now() - sent, bodyBytes: body.length, echoed: false, error: message });
+      sends.push({ index, phase, attempt, ok: false, status: null, ms: performance.now() - sent, bodyBytes: chunk.data.byteLength, echoed: false, error: message });
       return false;
     }
   };
@@ -202,16 +210,16 @@ async function chunkRun(transport: Transport, url: string, method: "PUT" | "POST
   const failed: number[] = [];
   let next = 0;
   const lane = async (): Promise<void> => {
-    while (next < envelopes.length) {
+    while (next < chunks.length) {
       const index = next;
       next += 1;
       if (!(await sendOne(index, "parallel", 1))) failed.push(index);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(parallel, envelopes.length) }, lane));
+  await Promise.all(Array.from({ length: Math.min(parallel, chunks.length) }, lane));
   const parallelPassMs = performance.now() - start;
   const sequentialStart = performance.now();
-  let delivered = envelopes.length - failed.length;
+  let delivered = chunks.length - failed.length;
   for (const index of [...failed].sort((a, b) => a - b)) {
     for (let attempt = 2; attempt <= 4; attempt += 1) {
       if (await sendOne(index, "sequential", attempt)) {
@@ -221,7 +229,7 @@ async function chunkRun(transport: Transport, url: string, method: "PUT" | "POST
     }
   }
   const sequentialPassMs = performance.now() - sequentialStart;
-  progress(`chunk run (${parallel} in flight): ${delivered} of ${envelopes.length} delivered in ${Math.round(performance.now() - start)} ms`);
+  progress(`chunk run (${parallel} in flight): ${delivered} of ${chunks.length} delivered in ${Math.round(performance.now() - start)} ms`);
   return {
     parallel,
     sends,
@@ -229,7 +237,7 @@ async function chunkRun(transport: Transport, url: string, method: "PUT" | "POST
     sequentialPassMs,
     totalMs: performance.now() - start,
     fellBack: failed.length > 0,
-    allDelivered: delivered === envelopes.length,
+    allDelivered: delivered === chunks.length,
   };
 }
 
@@ -419,13 +427,21 @@ async function handle(text: string): Promise<Json> {
           : directTransport();
       const readyMs = performance.now() - readyStart;
       try {
-        const plan = planUpload(request.batchId, { bytes: decodeBase64(request.upload), encoding: "json+gzip" });
-        const envelopes = plan.chunks.map((chunk) => JSON.stringify(chunk));
+        const chunkBytes = request.chunkBytes ?? OPEN_CHUNK_MAX_BYTES;
+        const plan = planUpload(request.batchId, { bytes: decodeBase64(request.upload), encoding: "json+gzip" }, chunkBytes);
+        const base = request.url.replace(/\/+$/, "");
         const runs: ChunkRun[] = [];
         for (const parallel of request.parallelRuns) {
-          runs.push(await chunkRun(transport, request.url, request.method, request.isolationKey, envelopes, parallel));
+          runs.push(await chunkRun(transport, base, request.method, request.isolationKey, plan.chunks, parallel));
         }
-        return { readyMs, chunks: envelopes.length, largestEnvelopeBytes: Math.max(...envelopes.map((text) => text.length)), runs };
+        return {
+          readyMs,
+          chunks: plan.chunks.length,
+          chunkBytes,
+          largestBodyBytes: Math.max(...plan.chunks.map((chunk) => chunk.data.byteLength)),
+          largestPathBytes: Math.max(...plan.chunks.map((chunk) => `${base}${openChunkPath(chunk.path)}`.length)),
+          runs,
+        };
       } finally {
         transport.close();
       }

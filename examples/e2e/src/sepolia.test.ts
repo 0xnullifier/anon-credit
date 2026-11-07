@@ -69,7 +69,7 @@ function fakeFetch(seen: string[]): typeof fetch {
             response_retention_seconds: 60,
             batch_lock_wait_ms: 5000,
             open_upload_max_bytes: 4_194_304,
-            open_upload_chunk_bytes: 24_576,
+            open_upload_chunk_bytes: 40_000,
             open_upload_chunk_body_bytes: 40_000,
             open_upload_max_chunks: 256,
             open_upload_ttl_seconds: 600,

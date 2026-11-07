@@ -61,10 +61,10 @@ export const pageRequestSchema = z.discriminatedUnion("op", [
     // POST only: send the body as text or as a ReadableStream.
     bodyKind: z.enum(["text", "stream"]),
   }),
-  // Start a transport, make the PUT /v1/open/chunks envelopes of `upload` (base64 of gzip proof
-  // bytes) with the SDK, and send them to an echo URL: first with `parallel` requests in
-  // flight, then the failed ones one at a time (3 more attempts). One run for each value of
-  // `parallelRuns`. Used to measure the chunked open upload through Nox.
+  // Start a transport, plan the chunks of `upload` (base64 of gzip proof bytes) with the SDK,
+  // and send each raw chunk to `url` + the chunk path (an echo URL): first with `parallel`
+  // requests in flight, then the failed ones one at a time (3 more attempts). One run for each
+  // value of `parallelRuns`. Used to measure the chunked open upload through Nox.
   z.strictObject({
     op: z.literal("chunkProbe"),
     transport: transportChoiceSchema,
@@ -75,7 +75,9 @@ export const pageRequestSchema = z.discriminatedUnion("op", [
     isolationKey: z.string(),
     batchId: z.string(),
     upload: z.string().min(1).max(8_000_000),
-    parallelRuns: z.array(z.number().int().min(1).max(16)).min(1).max(4),
+    // Raw bytes of one chunk (default and maximum: OPEN_CHUNK_MAX_BYTES).
+    chunkBytes: z.number().int().min(1).max(40_000).optional(),
+    parallelRuns: z.array(z.number().int().min(1).max(16)).min(1).max(12),
   }),
 ]);
 export type PageRequest = z.input<typeof pageRequestSchema>;
@@ -224,7 +226,7 @@ export const chunkSendSchema = z.strictObject({
   status: z.number().nullable(),
   ms: z.number(),
   bodyBytes: z.number(),
-  // The echo response contains the chunk data unchanged.
+  // The echo response contains the chunk bytes unchanged (as base64).
   echoed: z.boolean(),
   error: z.string().nullable(),
 });
@@ -244,6 +246,8 @@ export type ChunkRun = z.infer<typeof chunkRunSchema>;
 export const chunkProbeValueSchema = z.strictObject({
   readyMs: z.number(),
   chunks: z.number(),
-  largestEnvelopeBytes: z.number(),
+  chunkBytes: z.number(),
+  largestBodyBytes: z.number(),
+  largestPathBytes: z.number(),
   runs: z.array(chunkRunSchema),
 });
