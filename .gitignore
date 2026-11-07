@@ -70,3 +70,6 @@ anon-rpc-demo/public/app.js
 
 # Local service data
 data/
+
+# Forge broadcast logs. The deployment record is contracts/deployments/<network>.json.
+contracts/broadcast/

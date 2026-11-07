@@ -24,6 +24,10 @@
 #   EPOCH_SECONDS          default 30 (testnet). Production: 900.
 #   ETHERSCAN_API_KEY      optional. Secret. Turns on the verification step.
 #   EXPECTED_CHAIN_ID      default 11155111. The script refuses another chain.
+#   GAS_ESTIMATE_MULTIPLIER
+#                          default 800. Percent of the local gas estimate that forge sets as the
+#                          transaction gas limit. Sepolia (reth 2.10, 2026-11) charges about 6.6 times
+#                          the local EVM estimate for contract creation. 130 and 250 ran out of gas.
 #   DEPLOY_RECORD_PATH     default contracts/deployments/sepolia.json.
 #   DEPLOY_CONFIG_PATH     default config/deployment.testnet.toml.
 #   DEPLOY_FORCE           1: replace existing output files. A new file means a new gateway_id
@@ -57,6 +61,7 @@ deployer_key="${DEPLOYER_PRIVATE_KEY:-$issuer_key}"
 batch_price_wei="${BATCH_PRICE_WEI:-100000000000000}"
 epoch_seconds="${EPOCH_SECONDS:-30}"
 expected_chain="${EXPECTED_CHAIN_ID:-11155111}"
+gas_multiplier="${GAS_ESTIMATE_MULTIPLIER:-800}"
 record_path="${DEPLOY_RECORD_PATH:-$repo/contracts/deployments/sepolia.json}"
 config_path="${DEPLOY_CONFIG_PATH:-$repo/config/deployment.testnet.toml}"
 template="$repo/config/deployment.testnet.template.toml"
@@ -64,6 +69,7 @@ broadcast_dir="${FOUNDRY_BROADCAST:-$repo/contracts/broadcast}"
 
 [[ "$batch_price_wei" =~ ^[1-9][0-9]*$ ]] || fail "BATCH_PRICE_WEI must be a positive integer"
 [[ "$epoch_seconds" =~ ^[1-9][0-9]*$ ]] || fail "EPOCH_SECONDS must be a positive integer"
+[[ "$gas_multiplier" =~ ^[1-9][0-9]*$ ]] || fail "GAS_ESTIMATE_MULTIPLIER must be a positive integer"
 
 # The issuer address: lowercase hex. It must be the address of ISSUER_PRIVATE_KEY if both are set.
 issuer_address="${ISSUER_ADDRESS:-}"
@@ -94,7 +100,8 @@ say "running forge script (broadcast)"
   cd "$repo/contracts"
   ISSUER_ADDRESS="$issuer_address" BATCH_PRICE_WEI="$batch_price_wei" EPOCH_SECONDS="$epoch_seconds" \
     FOUNDRY_BROADCAST="$broadcast_dir" \
-    forge script script/Deploy.s.sol:Deploy --rpc-url "$SEPOLIA_RPC_URL" --broadcast --private-key "$deployer_key"
+    forge script script/Deploy.s.sol:Deploy --rpc-url "$SEPOLIA_RPC_URL" --broadcast --private-key "$deployer_key" \
+      --gas-estimate-multiplier "$gas_multiplier"
 )
 
 run_json="$broadcast_dir/Deploy.s.sol/$chain_id/run-latest.json"
