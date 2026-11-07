@@ -10,21 +10,26 @@
 //        node examples/e2e/nox-probe.ts --chunks [--url <echo URL>] [--direct]
 // Env: NOX_PROBE_POST_SIZES=16000,65536 (POST body sizes), NOX_PROBE_SKIP_GET=1,
 //      NOX_PROBE_BODY_KIND=stream (send the POST body as a ReadableStream),
-//      NOX_PROBE_CHUNK_METHOD=PUT|POST, NOX_PROBE_PARALLEL=4,1 (one run for each value).
+//      NOX_PROBE_CHUNK_METHOD=PUT|POST, NOX_PROBE_PARALLEL=8,4,1 (one run for each value, at
+//      most 12 runs), NOX_PROBE_CHUNK_BYTES=40000 (raw bytes of one chunk, at most 40,000),
+//      NOX_BOOTSTRAP_RPC_URL (Sepolia RPC for the Nox specifier; default: the SDK default).
 // Result: examples/e2e/results/nox-header-probe.json
 //
 // --chunks: the chunked open upload. The runner gzips the real browser proof
-// (artifacts/batch-open/proof.browser.json), makes the PUT /v1/open/chunks envelopes with the
-// SDK code in the page (24 KiB chunks), and sends them through Nox to a public echo URL (default
-// https://httpbin.org/anything): first 4 in flight on one isolation key, then the failed ones
-// one at a time. It records the time of each chunk and checks that the echo has the chunk
-// data unchanged. Result: examples/e2e/results/nox-chunk-probe.json
+// (artifacts/batch-open/proof.browser.json), plans the raw chunks with the SDK code in the page
+// (40,000 bytes, 8 chunks), and sends each one as an application/octet-stream PUT through Nox
+// to a public echo URL (default https://httpbingo.org/anything; httpbin.org answers 429 to 8
+// requests at the same time) + the chunk path: first
+// `parallel` in flight on one isolation key, then the failed ones one at a time. It records
+// the time of each chunk and checks that the echo has the chunk bytes unchanged.
+// Result: examples/e2e/results/nox-chunk-probe.json
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { chromium } from "playwright-core";
 import { HEADER_NEXT_SEQ, HEADER_REMAINING, HEADER_REPLAYED, OPEN_CHUNK_MAX_BYTES } from "@anon-credit/protocol";
+import { z } from "zod";
 import { findChromium } from "./src/chromium.ts";
 import { chunkProbeValueSchema, transportProbeValueSchema, type ChunkRun } from "./src/page-api.ts";
 import { PageCallError, pageCaller } from "./src/page-driver.ts";
@@ -57,6 +62,8 @@ interface ProbeRun {
 const postUrl = "https://httpbin.org/status/200";
 
 const bodyKind = process.env["NOX_PROBE_BODY_KIND"] === "stream" ? "stream" : "text";
+const bootstrapRpcUrl = z.url().optional().parse(process.env["NOX_BOOTSTRAP_RPC_URL"] || undefined);
+const bootstrapOption = bootstrapRpcUrl === undefined ? {} : { bootstrapRpcUrl };
 
 async function probe(isolated: boolean, method: "GET" | "POST", bodyBytes: number): Promise<ProbeRun> {
   const port = await freePort();
@@ -73,6 +80,7 @@ async function probe(isolated: boolean, method: "GET" | "POST", bodyBytes: numbe
       {
         op: "transportProbe",
         transport: "anon",
+        ...bootstrapOption,
         readyTimeoutMs: 120_000,
         url: method === "GET" ? echoUrl : postUrl,
         isolationKey: "header-probe",
@@ -139,6 +147,8 @@ async function headerProbe(): Promise<void> {
 interface ChunkSummary {
   readonly parallel: number;
   readonly ok: boolean;
+  // Chunks delivered in the parallel pass / chunks.
+  readonly firstPassSuccess: string;
   readonly fellBack: boolean;
   readonly totalMs: number;
   readonly parallelPassMs: number;
@@ -153,9 +163,11 @@ function summarize(run: ChunkRun, count: number): ChunkSummary {
   const times = okSends.map((send) => send.ms).sort((a, b) => a - b);
   const pick = (q: number): number => Math.round(times[Math.min(times.length - 1, Math.floor(q * times.length))] ?? 0);
   const delivered = new Set(okSends.map((send) => send.index));
+  const firstPass = run.sends.filter((send) => send.phase === "parallel");
   return {
     parallel: run.parallel,
     ok: run.allDelivered && delivered.size === count,
+    firstPassSuccess: `${firstPass.filter((send) => send.ok).length}/${firstPass.length}`,
     fellBack: run.fellBack,
     totalMs: Math.round(run.totalMs),
     parallelPassMs: Math.round(run.parallelPassMs),
@@ -168,13 +180,14 @@ function summarize(run: ChunkRun, count: number): ChunkSummary {
 
 // The chunked open upload with the real proof bytes through Nox.
 async function chunkProbe(): Promise<void> {
-  const url = (urlIndex >= 0 ? process.argv[urlIndex + 1] : undefined) ?? "https://httpbin.org/anything";
+  const url = (urlIndex >= 0 ? process.argv[urlIndex + 1] : undefined) ?? "https://httpbingo.org/anything";
   const method = process.env["NOX_PROBE_CHUNK_METHOD"] === "POST" ? "POST" : "PUT";
-  const parallelRuns = (process.env["NOX_PROBE_PARALLEL"] ?? "4,1").split(",").map(Number).filter((value) => value >= 1);
+  const parallelRuns = (process.env["NOX_PROBE_PARALLEL"] ?? "8,4,1").split(",").map(Number).filter((value) => value >= 1);
+  const chunkBytes = Number(process.env["NOX_PROBE_CHUNK_BYTES"] ?? OPEN_CHUNK_MAX_BYTES);
   const transport = process.argv.includes("--direct") ? "direct" : "anon";
   const proof = new Uint8Array(readFileSync(join(REPO_ROOT, "artifacts/batch-open/proof.browser.json")));
   const gzip = new Uint8Array(gzipSync(proof));
-  const count = Math.ceil(gzip.byteLength / OPEN_CHUNK_MAX_BYTES);
+  const count = Math.ceil(gzip.byteLength / chunkBytes);
   log(`proof ${proof.byteLength} B JSON, ${gzip.byteLength} B gzip, ${count} chunks`);
   const port = await freePort();
   const server = await startPageServer(port, true);
@@ -192,6 +205,7 @@ async function chunkProbe(): Promise<void> {
       {
         op: "chunkProbe",
         transport,
+        ...(transport === "anon" ? bootstrapOption : {}),
         readyTimeoutMs: 180_000,
         url,
         method,
@@ -199,6 +213,7 @@ async function chunkProbe(): Promise<void> {
         // Any canonical field element works as the batch ID; the echo URL does not check it.
         batchId: `0x${"0a".repeat(31)}01`,
         upload: Buffer.from(gzip).toString("base64"),
+        chunkBytes,
         parallelRuns,
       },
       chunkProbeValueSchema,
@@ -211,7 +226,7 @@ async function chunkProbe(): Promise<void> {
   }
   const summaries = value === undefined ? [] : value.runs.map((run) => summarize(run, count));
   const result = {
-    format: "anon-credit/nox-chunk-probe/v1",
+    format: "anon-credit/nox-chunk-probe/v2",
     at: new Date().toISOString(),
     transport,
     echoUrl: url,
@@ -219,7 +234,9 @@ async function chunkProbe(): Promise<void> {
     proofJsonBytes: proof.byteLength,
     uploadBytes: gzip.byteLength,
     chunks: value?.chunks ?? count,
-    largestEnvelopeBytes: value?.largestEnvelopeBytes ?? null,
+    chunkBytes: value?.chunkBytes ?? chunkBytes,
+    largestBodyBytes: value?.largestBodyBytes ?? null,
+    largestPathBytes: value?.largestPathBytes ?? null,
     readyMs: value === undefined ? null : Math.round(value.readyMs),
     summaries,
     runs: value?.runs ?? [],
