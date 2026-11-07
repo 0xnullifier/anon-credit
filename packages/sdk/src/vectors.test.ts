@@ -4,7 +4,7 @@
 
 import { commitment, fieldFromHex, fieldToHex, peakHeightOf, peakHeights } from "@anon-credit/crypto";
 import {
-  INITIAL_PRICE_TABLE,
+  CURRENT_PRICE_TABLE,
   OPEN_CHUNK_MAX_BYTES,
   decodeFixedHex,
   encodeBase64,
@@ -205,8 +205,8 @@ describe("open path against the gate witness and the public-input order contract
       deployment,
       prover: fakeProver(seen),
       clock: manualClock(Number(BigInt(witness.proof_epoch) * 30_000n)),
-      priceTable: INITIAL_PRICE_TABLE,
-      priceTableHash: encodeHex(priceTableHash(INITIAL_PRICE_TABLE)),
+      priceTable: CURRENT_PRICE_TABLE,
+      priceTableHash: encodeHex(priceTableHash(CURRENT_PRICE_TABLE)),
       pollMs: 1,
       transport: { kind: "direct", maxBodyBytes: Number.POSITIVE_INFINITY },
       openUpload: "auto",

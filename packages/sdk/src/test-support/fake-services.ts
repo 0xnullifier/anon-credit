@@ -7,7 +7,7 @@ import type { Transport, TransportLogEntry } from "@anon-credit/anon-transport";
 import { TransportError } from "@anon-credit/anon-transport";
 import { fieldToHex } from "@anon-credit/crypto";
 import {
-  INITIAL_PRICE_TABLE,
+  CURRENT_PRICE_TABLE,
   OPEN_CHUNK_MAX_BYTES,
   OPEN_CHUNK_PATH_PREFIX,
   PROTOCOL_VERSION,
@@ -58,7 +58,7 @@ const deploymentText = {
 };
 
 export const DEPLOYMENT_ID = encodeHex(deploymentId(deploymentConfigSchema.parse(deploymentText)));
-const PRICE_HASH = encodeHex(priceTableHash(INITIAL_PRICE_TABLE));
+const PRICE_HASH = encodeHex(priceTableHash(CURRENT_PRICE_TABLE));
 
 export interface CallRecord {
   readonly method: string;
@@ -246,7 +246,7 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
           block_tag: "finalized",
         });
       case "GET /v1/prices":
-        return json(200, { price_table_hash: PRICE_HASH, price_table: INITIAL_PRICE_TABLE });
+        return json(200, { price_table_hash: PRICE_HASH, price_table: CURRENT_PRICE_TABLE });
       case "GET /v1/roots":
         return json(200, {
           current_epoch: currentEpoch.toString(10),
@@ -308,7 +308,7 @@ export function fakeServices(kind: "anon" | "direct" = "anon"): FakeServices {
         }
         if (seq > next) return error(409, "sequence_gap");
         const rpc = rpcSchema.parse(JSON.parse(new TextDecoder().decode(rpcBytes)));
-        const units = INITIAL_PRICE_TABLE.units[rpc.method];
+        const units = CURRENT_PRICE_TABLE.units[rpc.method];
         if (units === undefined) return error(422, "method_not_allowed");
         if (session.state.remaining < units) return error(402, "insufficient_units");
         if (unitsTotal !== BigInt(session.state.units_total) + BigInt(units)) return error(400, "invalid_request");

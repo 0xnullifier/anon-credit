@@ -56,6 +56,20 @@ describe("open and spend", () => {
     expect(status.session.next_seq).toBe("3");
   });
 
+  it("charges 3 units for eth_call and 2 for eth_getTransactionReceipt (price table version 2)", async () => {
+    const setup = await testClient();
+    const [first] = await issued(setup, 1);
+    if (first === undefined) throw new Error("no batch");
+    await setup.client.open(first);
+    const session = await setup.client.session(first);
+    const call = await session.rpc("eth_call", [{ to: "0x000000000000000000000000000000000000dead", data: "0x70a08231" }, "latest"]);
+    const receipt = await session.rpc("eth_getTransactionReceipt", [`0x${"ab".repeat(32)}`]);
+    expect([call.remaining, receipt.remaining]).toEqual([97, 95]);
+    expect([call.unitsTotal, receipt.unitsTotal]).toEqual([3n, 5n]);
+    expect(session.state.price_table.version).toBe(2);
+    await expect(session.rpc("eth_getLogs", [])).rejects.toMatchObject({ code: "method_not_priced" });
+  });
+
   it("an exact open retry returns the existing session without a reset", async () => {
     const setup = await testClient();
     const [first] = await issued(setup, 1);
@@ -218,7 +232,7 @@ describe("retry and recovery", () => {
     if (first === undefined) throw new Error("no batch");
     await setup.client.open(first);
     const session = await setup.client.session(first);
-    await expect(session.rpc("eth_call", [])).rejects.toMatchObject({ code: "method_not_priced" });
+    await expect(session.rpc("eth_getLogs", [])).rejects.toMatchObject({ code: "method_not_priced" });
     expect(session.pending).toBeNull();
   });
 });
