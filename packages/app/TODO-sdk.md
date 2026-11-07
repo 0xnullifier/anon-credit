@@ -82,3 +82,42 @@ that registration is optional.
 `client.deployment` does not include `block_tag`, `demo_peer_enabled`, or `limits`. The app reads
 `GET /v1/config` of both services itself through the transport. `Client` could expose
 `gatewayConfig` and `issuerConfig` as read at `createClient`.
+
+## 8. Price table version 2: two new methods
+
+The gateway now serves price table version 2. The SDK has no method list; it reads the table
+from `GET /v1/prices`. The method select of `SpendStep.tsx` builds its options from
+`workbench.client.priceTable.units`, so the new methods show without a change. Only
+`defaultParams` has no case for them: they start with `[]`, and the gateway rejects that with
+`invalid_request`.
+
+| Method | Units | Params |
+|---|---:|---|
+| `eth_chainId` | 1 | none |
+| `eth_blockNumber` | 1 | none |
+| `eth_getBalance` | 2 | `[address, block]` |
+| `eth_call` | 3 | `[{to, from?, data or input?, value?, gas?, gasPrice?}, block]` |
+| `eth_getTransactionReceipt` | 2 | `[transaction hash]` |
+
+Canonical JSON: `{"units":{"eth_blockNumber":1,"eth_call":3,"eth_chainId":1,"eth_getBalance":2,"eth_getTransactionReceipt":2},"version":2}`.
+`price_table_hash`: `0x5a43e7886a8b605be5873140f6682098b51d69af2c46f2ccc5ac6670a8408f08`.
+`CURRENT_PRICE_TABLE` of `@anon-credit/protocol` is this table.
+
+Rules of the gateway (`crates/gateway/src/rpc.rs`):
+
+- `eth_call`: `to` (address) is necessary. `data` or `input` (hex bytes, at most 8 KiB), not
+  both. `value`, `gasPrice`, `gas` are canonical hex quantities (`0x0`, or lowercase digits with
+  no leading zero). Other members are rejected. The block is a tag or a canonical hex number.
+- `eth_getTransactionReceipt`: `0x` and 64 hex digits.
+- A response above `GATEWAY_UPSTREAM_RESPONSE_LIMIT_BYTES` is `upstream_failed` with no charge.
+
+Suggested defaults:
+
+```ts
+case "eth_call":
+  // CreditSale.batchPriceWei(); the sale address is client.deployment.sale_address.
+  return JSON.stringify([{ to: saleAddress, data: "0x11b2d3c6" }, "latest"]);
+case "eth_getTransactionReceipt":
+  // The purchase transaction hash of the buy step.
+  return JSON.stringify([purchaseTxHash]);
+```
