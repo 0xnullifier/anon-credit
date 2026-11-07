@@ -57,6 +57,7 @@ export {
   type SpendIdentity,
 } from "./spend.ts";
 export {
+  MAX_FIRST_USE_DELAY_EPOCHS,
   batchRecordSchema,
   deploymentRecordSchema,
   pendingSpendSchema,

@@ -302,6 +302,21 @@ describe("eligibility", () => {
     await issued(setup, 1);
     expect((await setup.client.batches())[0]?.delayEpochs).toBe(3);
   });
+
+  it("caps the delay at maxFirstUseDelayEpochs; 0 opens at the eligible epoch", async () => {
+    const capped = await testClient({ firstUseDelayEpochs: "random", maxFirstUseDelayEpochs: 1, delayRandom: () => 0.99 });
+    await issued(capped, 1);
+    expect((await capped.client.batches())[0]?.delayEpochs).toBe(1);
+
+    const progress: string[] = [];
+    const demo = await testClient({ firstUseDelayEpochs: "random", maxFirstUseDelayEpochs: 0, delayRandom: () => 0.99, onOpenProgress: (item) => progress.push(item.phase) });
+    const [first] = await issued(demo, 1);
+    if (first === undefined) throw new Error("no batch");
+    expect((await demo.client.batches())[0]?.delayEpochs).toBe(0);
+    const root = await demo.client.waitForEligibleRoot(first);
+    expect(root.sourceEpoch).toBe(1001n);
+    expect(progress).toEqual([]);
+  });
 });
 
 describe("storage and backup", () => {

@@ -47,6 +47,7 @@ import type { JsonValue } from "./spend.ts";
 import {
   BATCH_PREFIX,
   DEPLOYMENT_KEY,
+  MAX_FIRST_USE_DELAY_EPOCHS,
   batchKey,
   batchRecordSchema,
   deploymentRecordSchema,
@@ -73,8 +74,12 @@ export interface ClientConfig {
   readonly proverManifestSha256: string;
   // Optional pinned deployment ID. If set, the services must report it.
   readonly deploymentId?: string;
-  // First-use delay in epochs for new batches: a fixed value 0..3, or "random" (default).
+  // First-use delay in epochs for new batches: a fixed value 0..maxFirstUseDelayEpochs, or
+  // "random" (default): a uniform value in 0..maxFirstUseDelayEpochs.
   readonly firstUseDelayEpochs?: number | "random";
+  // Largest first-use delay in epochs, 0..3. Default: 3 (production). The testnet demo
+  // profile (BLOCK_TAG=latest) uses 0: then the epoch cadence is the only wait.
+  readonly maxFirstUseDelayEpochs?: number;
   // Random value in [0, 1) for the first-use delay. Default: WebCrypto.
   readonly delayRandom?: () => number;
   readonly random?: RandomSource;
@@ -294,15 +299,16 @@ export async function createClient(config: ClientConfig): Promise<Client> {
     return created;
   };
 
+  const maxDelay = Math.max(0, Math.min(MAX_FIRST_USE_DELAY_EPOCHS, Math.trunc(config.maxFirstUseDelayEpochs ?? MAX_FIRST_USE_DELAY_EPOCHS)));
   const delayFor = (): number => {
     const fixed = config.firstUseDelayEpochs ?? "random";
     switch (fixed) {
       case "random": {
         const unit = config.delayRandom?.() ?? randomUnit(random);
-        return Math.max(0, Math.min(3, Math.floor(unit * 4)));
+        return Math.max(0, Math.min(maxDelay, Math.floor(unit * (maxDelay + 1))));
       }
       default:
-        return Math.max(0, Math.min(3, Math.trunc(fixed)));
+        return Math.max(0, Math.min(maxDelay, Math.trunc(fixed)));
     }
   };
 

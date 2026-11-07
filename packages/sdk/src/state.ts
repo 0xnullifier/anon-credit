@@ -77,6 +77,9 @@ export const pendingSpendSchema = z.strictObject({
 });
 export type PendingSpend = z.output<typeof pendingSpendSchema>;
 
+// Largest first-use delay in epochs. The production default of ClientConfig.maxFirstUseDelayEpochs.
+export const MAX_FIRST_USE_DELAY_EPOCHS = 3;
+
 export const batchRecordSchema = z.strictObject({
   // Creation order in this store. The client uses batches in this order.
   order: z.number().int().nonnegative(),
@@ -87,8 +90,8 @@ export const batchRecordSchema = z.strictObject({
   // Ed25519 session secret key. Secret.
   session_secret: hex32TextSchema,
   session_pub: hex32TextSchema,
-  // Random first-use delay in epochs (0 to 3), chosen once.
-  delay_epochs: z.number().int().min(0).max(3),
+  // Random first-use delay in epochs (0 to maxFirstUseDelayEpochs, at most 3), chosen once.
+  delay_epochs: z.number().int().min(0).max(MAX_FIRST_USE_DELAY_EPOCHS),
   leaf: leafRecordSchema.nullable(),
   open_request: inlineOpenRequestSchema.nullable(),
   session: sessionRecordSchema.nullable(),
