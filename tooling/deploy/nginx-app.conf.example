@@ -1,0 +1,55 @@
+# nginx server block for the customer app (packages/app) built by tooling/deploy/build-app.sh.
+#
+# Copy to /etc/nginx/sites-available/anon-credit-app, set server_name and root, then:
+#   ln -s /etc/nginx/sites-available/anon-credit-app /etc/nginx/sites-enabled/
+#   certbot --nginx -d app.example.com      (or your own TLS setup)
+#   nginx -t && systemctl reload nginx
+#
+# The two Cross-Origin headers make the page cross-origin isolated. Without them the
+# threaded prover cannot run and the page falls back to the slower scalar build.
+# Add the app origin (https://app.example.com) to GATEWAY_CORS_ORIGINS of the gateway and
+# restart the gateway, or the page fails at connect with "Failed to fetch".
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name app.example.com;
+
+    root /var/www/anon-credit-app;
+    index index.html;
+
+    # Required on every response, including the WASM and the prover key files.
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Embedder-Policy "require-corp" always;
+
+    # Correct types for the prover files.
+    types {
+        application/wasm wasm;
+        application/json json;
+        application/javascript js;
+        image/svg+xml svg;
+    }
+
+    # The prover key and WASM files are large and never change for one deployment.
+    location ~* \.(wasm|pkp|pkv|np)$ {
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        gzip_static on;
+    }
+
+    # Hashed build assets.
+    location /assets/ {
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # Single page: unknown paths go to index.html.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    gzip on;
+    gzip_types application/javascript application/json text/css image/svg+xml;
+}

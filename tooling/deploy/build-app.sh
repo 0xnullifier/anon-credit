@@ -15,6 +15,9 @@
 # with these response headers on every path, or the threaded prover cannot run:
 #   Cross-Origin-Opener-Policy: same-origin
 #   Cross-Origin-Embedder-Policy: require-corp
+# nginx: tooling/deploy/nginx-app.conf.example has a complete server block.
+# Caddy: `header Cross-Origin-Opener-Policy same-origin` and
+#        `header Cross-Origin-Embedder-Policy require-corp` in the site block.
 # Add the app origin to GATEWAY_CORS_ORIGINS of the gateway and restart it.
 set -euo pipefail
 
